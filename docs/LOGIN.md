@@ -34,7 +34,7 @@ For a **fresh installation only**, the owner’s preauthorized profile is `lechi
 
 ## Current position access and PIN expiration
 
-PIN is now the first/default login method. Per-employee expiration is OFF by default; enable it in Employees → Edit employee. See [current architecture, operator steps, and validation](POSITION-ACCESS.md). The evidence below describes earlier rollouts.
+PIN is now the first/default login method. Per-employee expiration is OFF by default. In Employees → Edit employee → PIN expiration, turn **PIN expires** on to choose a date. The PIN works through that day in Miami time. A fixed expiration date is not extended by resetting the PIN; change the date or turn expiration off to renew access. The previous **90 days after PIN change** option remains available and existing policies are preserved. See [current architecture, operator steps, and validation](POSITION-ACCESS.md). The evidence below describes earlier rollouts.
 
 ## Verification and limits
 

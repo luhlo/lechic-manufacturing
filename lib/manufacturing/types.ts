@@ -14,6 +14,7 @@ export interface Profile extends Row {
   email: string;
   username?: string | null;
   pin_expiration_enabled?: boolean;
+  pin_expiration_date?: string | null;
   position_id: string | null;
   active: boolean;
 }

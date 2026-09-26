@@ -514,6 +514,12 @@ export function Management({
                     profileId={editing.id ? String(editing.id) : null}
                     enabled={editing.pin_expiration_enabled === true}
                     onChange={(v) => update("pin_expiration_enabled", v)}
+                    expirationDate={
+                      editing.pin_expiration_date
+                        ? String(editing.pin_expiration_date)
+                        : null
+                    }
+                    onDateChange={(v) => update("pin_expiration_date", v)}
                   />
                   <p className="muted tiny">
                     After saving, an administrator can open Login options to

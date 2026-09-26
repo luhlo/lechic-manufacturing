@@ -238,7 +238,7 @@ export function createLoginHandler(
         if (record.error === "pin_expired")
           throw new LoginError(
             403,
-            "Your PIN has expired. Ask your manager to reset it, or use Email / username and your password.",
+            "Your PIN has expired. Ask your manager to renew PIN access, or use Email / username and your password.",
           );
         if (!record.user_id)
           throw new LoginError(401, "PIN not recognized. Please try again.");

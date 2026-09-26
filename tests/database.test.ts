@@ -57,5 +57,9 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/pin_expiration.sql", "utf8"),
   );
   expect(JSON.stringify(expiry)).toContain("PASS:");
+  const fixedDate = await db.exec(
+    readFileSync("supabase/tests/pin_expiration_date.sql", "utf8"),
+  );
+  expect(JSON.stringify(fixedDate)).toContain("PASS:");
   await db.close();
 });
