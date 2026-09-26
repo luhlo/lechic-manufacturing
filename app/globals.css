@@ -158,29 +158,21 @@ small,
 }
 .brand {
   display: flex;
-  gap: 10px;
   align-items: center;
   line-height: 1;
 }
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 39px;
-  height: 39px;
-  border: 1px solid currentColor;
-  border-radius: 12px;
-}
-.brand > div {
-  font-family: Georgia, serif;
-  font-size: 1.8rem;
-  letter-spacing: -0.04em;
-}
-.brand > div > span {
+.brand-logo {
   display: block;
-  font-family: Arial, sans-serif;
-  font-size: 0.6rem;
-  letter-spacing: 0.24em;
-  margin-top: 5px;
+  width: 132px;
+  aspect-ratio: 1326.14 / 440;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+.studio-sidebar .brand,
+.login-art .brand {
+  color: #fff;
 }
 .avatar-line {
   display: flex;
@@ -1181,9 +1173,6 @@ legend {
 .employee-only .topbar .breadcrumb {
   display: none;
 }
-.employee-only .brand {
-  font-size: 1rem;
-}
 @media (min-width: 1500px) {
   .main-content {
     padding: 42px 50px;
@@ -1389,18 +1378,8 @@ legend {
   .panel-heading .tiny {
     font-size: 0.75rem;
   }
-  .employee-only .topbar .brand > div {
-    font-size: 1.3rem;
-  }
-  .employee-only .topbar .brand-mark {
-    width: 30px;
-    height: 30px;
-  }
-  .employee-only .topbar .brand-mark svg {
-    width: 18px;
-  }
-  .employee-only .topbar .brand > div > span {
-    font-size: 0.45rem;
+  .employee-only .topbar .brand-logo {
+    width: 116px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

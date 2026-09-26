@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Factory,
   Timer,
   LayoutDashboard,
   Users,
@@ -542,12 +541,15 @@ export function ManufacturingApp({
 function Brand() {
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <Factory size={22} />
-      </span>
-      <div>
-        le chic<span>MIAMI</span>
-      </div>
+      <span
+        className="brand-logo"
+        role="img"
+        aria-label="Le Chic Miami"
+        style={{
+          maskImage: `url(${import.meta.env.BASE_URL}le-chic-miami-logo.svg)`,
+          WebkitMaskImage: `url(${import.meta.env.BASE_URL}le-chic-miami-logo.svg)`,
+        }}
+      />
     </div>
   );
 }
