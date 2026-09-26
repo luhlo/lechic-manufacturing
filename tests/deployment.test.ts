@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { publicConfiguration } from "../build/public-env";
-import { pageFromPath, pathForPage, appHome } from "../lib/manufacturing/routes";
+import { pageFromPath, pathForPage, appHome, landingPage } from "../lib/manufacturing/routes";
 import { deploymentBase } from "../build/base-path.mjs";
 const url = "https://bbbgrxvidrlmrrezfmil.supabase.co";
 const env = { NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test_public_only" };
@@ -60,5 +60,21 @@ describe("GitHub Pages project paths", () => {
     expect(deploymentBase("/")).toBe("/");
     for (const invalid of ["../", "/../", "https://elsewhere/", "//elsewhere/", "/repo/?redirect=elsewhere"])
       expect(() => deploymentBase(invalid)).toThrow();
+  });
+});
+
+
+describe("employee landing and session recovery", () => {
+  it("lands My Work-only PIN sign-ins directly in work", () => {
+    expect(landingPage(["my_work.access"],"dashboard",null,true)).toBe("work");
+  });
+  it("preserves management navigation and protected URL handling", () => {
+    expect(landingPage(["*"],"profiles",null,true)).toBe("profiles");
+    expect(landingPage(["my_work.access"],"profiles",null)).toBe("profiles");
+  });
+  it.each(["running", "awaiting_quantity"] as const)("prioritizes recovered %s work without granting permission", status => {
+    const recovered = {status} as import("../lib/manufacturing/types").Session;
+    expect(landingPage(["*"],"dashboard",recovered)).toBe("work");
+    expect(landingPage(["analytics.view"],"analytics",recovered)).toBe("analytics");
   });
 });

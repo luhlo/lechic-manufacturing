@@ -298,3 +298,15 @@ test("old assignments do not clutter today's list", () => {
     ),
   ).toEqual([]);
 });
+
+
+test("no-quantity finish keeps quantity inapplicable while legacy sessions still request it", () => {
+  const finish = {session_id: "s", request_id: "f", action: "finish" as const, at: at(60), expected_revision: 1};
+  const completed = applyCommand({...session, product_id: null, requires_design: false, requires_quantity: false}, finish);
+  expect(completed.status).toBe("completed");
+  expect(completed.quantity).toBeNull();
+  expect(rate(completed.quantity,60)).toBeNull();
+  expect(applyCommand(session,finish).status).toBe("awaiting_quantity");
+  const measured = {...completed, requires_quantity: true, quantity: 0};
+  expect(weightedBaseline([completed,measured],at(100),"a",null)).toEqual({rate:0,samples:1});
+});

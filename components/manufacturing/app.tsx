@@ -32,11 +32,10 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Api, SessionStore, clientFor, message } from "@/lib/manufacturing/api";
-import { pageFromPath, pathForPage } from "@/lib/manufacturing/routes";
+import { pageFromPath, pathForPage, landingPage } from "@/lib/manufacturing/routes";
 import {
   allowed,
   canViewPage,
-  firstPage,
   type CachedState,
 } from "@/lib/manufacturing/types";
 import { Employee } from "./employee";
@@ -112,6 +111,7 @@ export function ManufacturingApp({
     [online, setOnline] = useState(true),
     [recovery, setRecovery] = useState(false),
     [busy, setBusy] = useState(false);
+  const [navigationSession, setNavigationSession] = useState<string | null>(null);
   const navigate = useCallback((next: string, replace = false) => {
     const path = pathForPage(next);
     if (window.location.pathname !== path) {
@@ -140,7 +140,7 @@ export function ManufacturingApp({
       setState(s.state ? structuredClone(s.state) : null);
   }, []);
   const activate = useCallback(
-    async (api: Api, uid: string) => {
+    async (api: Api, uid: string, signedIn = false) => {
       const n = ++version.current;
       const s = new SessionStore(api, uid);
       storeRef.current = s;
@@ -153,13 +153,12 @@ export function ManufacturingApp({
         if (n !== version.current) return;
         publish(s);
         const requested = pageFromPath(window.location.pathname);
-        const fallback = firstPage(s.state!.context.permissions) ?? "work";
-        // Keep an explicitly requested protected page so denial is visible.
-        navigate(requested ?? fallback, true);
+        navigate(landingPage(s.state!.context.permissions, requested, s.state!.session, signedIn), true);
       } catch (e) {
         if (n === version.current) {
           setError(message(e));
           publish(s);
+          if (s.state?.session && s.state.session.status !== "completed" && canViewPage(s.state.context.permissions,"work")) navigate("work",true);
         }
       } finally {
         if (n === version.current) setLoading(false);
@@ -211,7 +210,7 @@ export function ManufacturingApp({
           setPage("work");
           setLoading(false);
         } else if (session && storeRef.current?.uid !== session.user.id) {
-          void activate(new Api(c), session.user.id);
+          void activate(new Api(c), session.user.id, event === "SIGNED_IN");
         } else if (!session) setLoading(false);
       });
       unsubscribe = () => data.subscription.unsubscribe();
@@ -262,7 +261,7 @@ export function ManufacturingApp({
       await fn();
       if (store) publish(store);
     } catch (e) {
-      toast.error(message(e));
+      toast.error(page === "work" ? workError(e, store?.state ?? null) : message(e));
       if (store) publish(store);
     } finally {
       busyRef.current = false;
@@ -319,10 +318,11 @@ export function ManufacturingApp({
   const current =
     selected && canViewPage(state.context.permissions, page) ? page : "denied";
   const managed = permitted.length > 1;
+  const focusedWork = current === "work" && state.session && state.session.status !== "completed" && navigationSession !== state.session.id;
   return (
     <SidebarProvider>
-      <div className={"workspace " + (!managed ? "employee-only" : "")}>
-        {managed && (
+      <div className={"workspace " + (!managed ? "employee-only" : "") + (focusedWork ? " focused-work" : "")}>
+        {managed && !focusedWork && (
           <Sidebar className="studio-sidebar">
             <SidebarHeader>
               <Brand />
@@ -371,7 +371,9 @@ export function ManufacturingApp({
         <SidebarInset>
           <header className="topbar">
             <div className="topbar-left">
-              {managed ? (
+              {managed && focusedWork ? (
+                <button className="text-button work-navigation" onClick={()=>setNavigationSession(state.session!.id)}>Navigation</button>
+              ) : managed ? (
                 <SidebarTrigger aria-label="Toggle navigation">
                   <Menu />
                 </SidebarTrigger>
@@ -590,4 +592,14 @@ function PasswordRecovery({
       </form>
     </main>
   );
+}
+
+function workError(error: unknown, state: CachedState | null) {
+  const text = message(error);
+  if (/RPC|fetch|network|timeout|invocation/i.test(text)) {
+    return state?.queue.length
+      ? "We couldn’t sync that yet. Your pending work is saved on this device. Try Sync when connected."
+      : "We couldn’t save that yet. Keep this screen open and try again.";
+  }
+  return text;
 }

@@ -1451,3 +1451,23 @@ legend {
 .dashboard-totals strong {
   font-size: 1.8rem;
 }
+
+/* Employee control panel only. Management layout and permissions are unchanged. */
+.work-greeting{margin-bottom:24px}.work-greeting p{font-size:1.2rem;font-weight:600;margin-bottom:5px}.work-greeting time{font-size:.95rem;color:#526b59}
+.work-content .employee-panel{max-width:520px;overflow-wrap:anywhere}
+.work-content .employee-panel button{touch-action:manipulation;min-height:48px}
+.work-content .employee-panel .jumbo{min-height:64px;font-size:1.1rem;white-space:normal}
+.work-content .activity-tile{min-height:76px}.work-content .activity-tile strong{min-width:0}
+.work-content .design-tile{min-height:80px;text-align:left}.work-content .design-tile>span{min-width:0}.work-content .design-tile svg{flex-shrink:0}
+.work-section-title{font-size:1rem;margin:24px 0 12px}
+.work-content .search-box{margin:16px 0}.work-content input{font-size:1rem;min-width:0}.work-content input.quantity{font-size:3.5rem;height:110px}
+.work-content .timer-value{font-size:clamp(2.6rem,12vw,4.25rem);letter-spacing:-.025em;margin-top:24px}
+.work-content .timer-caption{display:block;font-size:.75rem}.work-content .timer-state{display:flex;justify-content:center;font-size:1.05rem;margin:22px 0 0}
+.work-content .timer-card{padding:24px 16px}.work-content .timer-card h1{overflow-wrap:anywhere;font-size:1.8rem}
+.work-content .timer-actions{margin-top:16px}.work-content .timer-actions>.button{min-height:64px;font-size:1rem}
+.work-content .work-start{margin-top:28px}.work-feedback{display:block;min-height:24px;text-align:center;font-size:.95rem;margin-top:12px}
+.employee-kpi{font-size:.875rem;color:#526b59;margin:12px 0;text-align:center}
+.work-content .complete-panel{padding-top:10px}.work-content .complete-panel .muted{padding:12px 0}.work-content .complete-panel .button{margin-top:14px}
+.work-content .complete-panel h2{font-size:1.15rem;margin:24px 0 8px}
+.work-navigation{min-height:44px}.focused-work .topbar .breadcrumb{display:none}
+@media(max-width:430px){.work-content{padding:20px 16px}.work-content .employee-panel>h1{font-size:1.85rem}.work-content .timer-actions{grid-template-columns:1fr;gap:12px}.work-content .timer-actions>.button{flex-direction:row}.work-content .timer-card{margin-bottom:16px}.work-content .quiet-note{margin-top:12px}.work-content .quantity-form{margin-top:24px}}

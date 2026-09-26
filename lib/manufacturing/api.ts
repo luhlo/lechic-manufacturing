@@ -273,7 +273,7 @@ export class SessionStore {
   }
   async start(
     activityId: string,
-    productId: string,
+    productId: string | null,
     assignmentId: string | null,
   ) {
     return this.exclusive(async () => {

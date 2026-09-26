@@ -386,3 +386,28 @@ test("permission revocation refreshes even when saved work has a conflict", asyn
   expect(s.state?.conflict).toBeTruthy();
   await expect(s.start("a", "d", null)).rejects.toThrow("My work access");
 });
+
+
+test("no-design no-quantity completion survives reopen and an uncertain server acknowledgement", async () => {
+  const api = new Network(), d = disk();
+  api.server = {...fresh(), product_id:null, requires_design:false, requires_quantity:false};
+  const store = new SessionStore(api,"u",d.storage);
+  await store.load();
+  api.online = false;
+  await store.command("finish");
+  const end = store.state?.session?.ended_at;
+  const reopened = new SessionStore(api,"u",d.storage);
+  await reopened.load();
+  expect(reopened.state?.session?.status).toBe("completed");
+  expect(reopened.state?.session?.quantity).toBeNull();
+  expect(reopened.state?.queue).toHaveLength(1);
+  api.online = true; api.uncertain = true;
+  await reopened.sync();
+  expect(reopened.state?.queue).toHaveLength(1);
+  await reopened.sync();
+  expect(reopened.state?.queue).toHaveLength(0);
+  expect(api.receipts.size).toBe(1);
+  expect(api.server?.ended_at).toBe(end);
+  expect(api.server?.quantity).toBeNull();
+  expect(api.server?.product_id).toBeNull();
+});

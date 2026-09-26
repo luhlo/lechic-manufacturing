@@ -80,6 +80,7 @@ export function Management({
   const edit = (row?: Row) => {
     setFormError("");
     const r: Record<string, unknown> = { active: true, ...row };
+    if (page === "activities") { r.requires_design ??= true; r.requires_quantity ??= true; }
     if (page === "activities")
       r.position_ids = c.activity_positions
         .filter((x) => x.activity_id === row?.id)
@@ -529,6 +530,14 @@ export function Management({
                 </>
               )}
               {page === "products" && input("SKU", "sku")}
+              {page === "activities" && (
+                <fieldset>
+                  <legend>Employee work steps</legend>
+                  <Check label="Requires design/product" checked={editing.requires_design !== false} onChange={(on) => update("requires_design", on)} />
+                  <Check label="Requires quantity" checked={editing.requires_quantity !== false} onChange={(on) => update("requires_quantity", on)} />
+                  <p className="muted tiny">Applies to new sessions. Active and historical sessions keep their original settings.</p>
+                </fieldset>
+              )}
               {page === "activities" && (
                 <fieldset>
                   <legend>Positions</legend>

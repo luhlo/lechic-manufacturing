@@ -74,8 +74,8 @@ export function totals(segments: Segment[], now = Date.now()) {
   result.total = result.work + result.walking + result.interruption;
   return result;
 }
-export function rate(quantity: number, seconds: number): number | null {
-  return seconds > 0 ? (quantity * 3600) / seconds : null;
+export function rate(quantity: number | null, seconds: number): number | null {
+  return quantity != null && seconds > 0 ? (quantity * 3600) / seconds : null;
 }
 export function clockText(seconds: number) {
   const n = Math.max(0, Math.floor(seconds));
@@ -96,7 +96,7 @@ export function chooseKpi(
     target_value: number;
   }[],
   activityId: string,
-  productId: string,
+  productId: string | null,
   at: string,
 ) {
   return (
@@ -154,7 +154,7 @@ export function applyCommand(session: Session, command: Command): Session {
       });
     } else if (command.action === "finish") {
       s.ended_at = command.at;
-      s.status = "awaiting_quantity";
+      s.status = s.requires_quantity === false ? "completed" : "awaiting_quantity";
     } else throw Error("Invalid action.");
   }
   s.revision++;
@@ -164,11 +164,12 @@ export function weightedBaseline(
   sessions: Session[],
   before: string,
   activity: string,
-  product: string,
+  product: string | null,
 ) {
   const history = sessions.filter(
     (s) =>
       s.status === "completed" &&
+      s.requires_quantity !== false && s.quantity != null &&
       s.started_at < before &&
       s.activity_id === activity &&
       s.product_id === product,
