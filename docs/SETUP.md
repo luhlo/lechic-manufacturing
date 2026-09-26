@@ -1,0 +1,58 @@
+# Connect the independent Supabase project
+
+## Current status
+
+Supabase organization **le chic** owns **Le Chic Manufacturing**, project `bbbgrxvidrlmrrezfmil`, US East, quoted **$0/month** at creation. The following migrations are applied and tested:
+
+- `20260926003308_manufacturing_core.sql`
+- `20260926005814_qa_stabilization.sql`
+- `20260926011457_advisor_indexes.sql`
+
+`supabase/bootstrap-admin.sql` reserved **lechicmiami@gmail.com**, display name **Le Chic Miami**, with the Administrator role. No owner password was created and no email was sent. Local `.env.local` and the Site runtime have the project URL and modern publishable key. No service-role key is used. Temporary QA users and all QA manufacturing/catalog rows were removed; employee KPI visibility is OFF.
+
+For the current static GitHub Pages deployment, follow [GITHUB-PAGES.md](GITHUB-PAGES.md), including the public build variables, actual production URL and origin-transition instructions. The older private Site is a review deployment.
+
+## Remaining launch configuration
+
+1. In Supabase Auth, set the Site URL and allowed confirmation/reset redirect URLs to the final deployment origin. Keep email confirmation enabled. Configure production SMTP for employee confirmation and password reset delivery. These account-level Auth settings and email delivery were not modified/tested by this audit.
+2. Open the app, choose **First time here?**, use **lechicmiami@gmail.com**, and choose your own password. Confirm your email and sign in. If Supabase's default mail service restricts recipients, finish SMTP configuration first.
+3. Create your actual positions, activities and their position links, designs, and employee records. Assign capabilities through Permissions and create work assignments.
+4. Deploy the static app to the independent GitHub Pages repository. The previous Sites review deployment remains owner-private; the GitHub Pages shell is reachable at its new URL, with Supabase sign-in/RLS protecting production data.
+5. Verify installation, actual screen lock and app switching on one iPhone/Safari and one Android/Chrome. Desktop Chrome suspension and PWA tests passed, but those do not certify mobile OS behavior.
+
+For a fresh independent environment, apply all files in `supabase/migrations/` in order and then the bootstrap SQL. Never point the app at Relay or Commissions. `.env.example` lists the two public variables. Existing migration timestamps in the hosted ledger may differ because the management API assigns deployment timestamps; names and SQL identify the same three checked migrations.
+
+## Supabase configuration
+
+- RLS is enabled on all application tables. Clients have only SELECT on tables and authenticated EXECUTE on the explicit RPC API. Writes occur in checked transaction functions.
+- Authorization reads current profile/role state, not user-editable metadata. Deactivation blocks database access with an existing token.
+- Private implementation functions have fixed search paths and explicit authentication/capability checks. Public wrappers run as security invokers.
+- `session_metrics` is a security-invoker view. Historical target snapshots and command receipts live in the unexposed `private` schema.
+- The schema includes profiles, configurable roles and capabilities, positions, activities, products, assignments, settings, versioned KPIs, sessions, segments, and private operation/audit records.
+- Only one running or awaiting-quantity session per employee is permitted. Core operations are idempotent and revision checked. No client can insert arbitrary segments directly.
+- Run the Supabase security and performance advisors after applying the schema. The transactional SQL suites are in `supabase/tests/`. Run them on an isolated empty QA database: the core last-administrator assertion assumes its fixture is the only administrator. Both suites passed on the new hosted database before production setup.
+
+## Local commands
+
+Use Node 24.19.0 (pinned in `.node-version`) and npm.
+
+```sh
+npm ci
+npm run dev
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+`npm run build` creates static production output in `dist/` and fingerprints the service-worker cache. Installation precaches the generated JavaScript/CSS assets, so the first online visit prepares the shell for offline reopening. Existing installed clients update when the old app closes; the service worker does not forcibly replace a running timer.
+
+## Employee access and launch
+
+The Sites preview is owner-private. Employees need an intentionally shared production deployment they can reach, with Supabase sign-in still protecting all data. Set the auth redirect URLs to that origin. A private review URL alone is not an employee rollout.
+
+Verify installation and a real lock/background/reopen cycle on both iPhone Safari and Android Chrome before introducing it to the team. Automated browser recovery tests do not replace testing each mobile OS's storage and suspension behavior. Browser storage can be cleared by a user or OS; reconnect frequently and wait for Synced before switching phones. New sessions require connectivity; ongoing work can queue transitions, Finish, and quantity temporarily offline.
+
+If a session conflicts with another device, the app retains pending commands and offers explicit server recovery, saving an audit copy in IndexedDB. A manager should review pending timestamps before recovery. V1 does not include editing historical session times or automatic conflict merging.
+
+Manufacturing time is separate from Square clock-in/payroll. No payroll, scheduling, barcode, or notification integration is included.

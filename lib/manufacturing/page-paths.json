@@ -1,0 +1,13 @@
+{
+  "work": "/work",
+  "dashboard": "/admin",
+  "profiles": "/admin/employees",
+  "positions": "/admin/positions",
+  "roles": "/admin/permissions",
+  "activities": "/admin/activities",
+  "products": "/admin/designs",
+  "assignments": "/admin/assignments",
+  "kpi_targets": "/admin/kpis",
+  "analytics": "/analytics",
+  "settings": "/admin/settings"
+}
