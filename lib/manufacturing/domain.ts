@@ -26,11 +26,21 @@ export function relevantActivities(
   links: { activity_id: string; position_id: string }[],
   positionId: string | null,
 ) {
-  return activities.filter(
-    (a) =>
-      a.active &&
-      links.some((l) => l.activity_id === a.id && l.position_id === positionId),
-  );
+  return activities
+    .filter(
+      (a) =>
+        a.active &&
+        links.some(
+          (l) => l.activity_id === a.id && l.position_id === positionId,
+        ),
+    )
+    .sort(
+      (a, b) =>
+        a.name.localeCompare(b.name, undefined, {
+          sensitivity: "base",
+          numeric: true,
+        }) || a.id.localeCompare(b.id),
+    );
 }
 export function currentAssignments(
   assignments: Assignment[],
@@ -74,8 +84,15 @@ export function totals(segments: Segment[], now = Date.now()) {
   result.total = result.work + result.walking + result.interruption;
   return result;
 }
-export function rate(quantity: number, seconds: number): number | null {
-  return seconds > 0 ? (quantity * 3600) / seconds : null;
+export function rate(quantity: number | null, seconds: number): number | null {
+  return quantity !== null && seconds > 0 ? (quantity * 3600) / seconds : null;
+}
+export function parseQuantity(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const quantity = Number(value);
+  return Number.isSafeInteger(quantity) && quantity <= 1_000_000_000
+    ? quantity
+    : null;
 }
 export function clockText(seconds: number) {
   const n = Math.max(0, Math.floor(seconds));
@@ -96,7 +113,7 @@ export function chooseKpi(
     target_value: number;
   }[],
   activityId: string,
-  productId: string,
+  productId: string | null,
   at: string,
 ) {
   return (
@@ -125,7 +142,7 @@ export function applyCommand(session: Session, command: Command): Session {
   const s = structuredClone(session);
   const open = s.segments.find((x) => !x.ended_at);
   if (command.action === "complete") {
-    if (s.status !== "awaiting_quantity")
+    if (s.status !== "awaiting_quantity" || s.requires_quantity === false)
       throw Error("Finish the session first.");
     if (
       !Number.isSafeInteger(command.quantity) ||
@@ -154,7 +171,8 @@ export function applyCommand(session: Session, command: Command): Session {
       });
     } else if (command.action === "finish") {
       s.ended_at = command.at;
-      s.status = "awaiting_quantity";
+      s.status =
+        s.requires_quantity === false ? "completed" : "awaiting_quantity";
     } else throw Error("Invalid action.");
   }
   s.revision++;
@@ -164,11 +182,12 @@ export function weightedBaseline(
   sessions: Session[],
   before: string,
   activity: string,
-  product: string,
+  product: string | null,
 ) {
   const history = sessions.filter(
     (s) =>
       s.status === "completed" &&
+      s.quantity !== null &&
       s.started_at < before &&
       s.activity_id === activity &&
       s.product_id === product,
@@ -181,4 +200,36 @@ export function weightedBaseline(
     ),
     samples: history.length,
   };
+}
+
+// Keep all recorded time visible; rate denominators only include counted output.
+export function productionMetrics(sessions: Session[]) {
+  return sessions.reduce(
+    (a, s) => {
+      const t = totals(s.segments);
+      const counted = s.quantity !== null;
+      return {
+        work: a.work + t.work,
+        walking: a.walking + t.walking,
+        interruption: a.interruption + t.interruption,
+        total: a.total + t.total,
+        events: a.events + t.walkingEvents,
+        interruptions: a.interruptions + t.interruptionEvents,
+        quantity: counted ? (a.quantity ?? 0) + s.quantity! : a.quantity,
+        rateWork: a.rateWork + (counted ? t.work : 0),
+        rateTotal: a.rateTotal + (counted ? t.total : 0),
+      };
+    },
+    {
+      work: 0,
+      walking: 0,
+      interruption: 0,
+      total: 0,
+      events: 0,
+      interruptions: 0,
+      quantity: null as number | null,
+      rateWork: 0,
+      rateTotal: 0,
+    },
+  );
 }

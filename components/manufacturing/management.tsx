@@ -80,10 +80,13 @@ export function Management({
   const edit = (row?: Row) => {
     setFormError("");
     const r: Record<string, unknown> = { active: true, ...row };
-    if (page === "activities")
+    if (page === "activities") {
+      r.requires_design ??= true;
+      r.requires_quantity ??= true;
       r.position_ids = c.activity_positions
         .filter((x) => x.activity_id === row?.id)
         .map((x) => x.position_id);
+    }
     if (page === "roles")
       r.permission_ids = c.role_permissions
         .filter((x) => x.role_id === row?.id)
@@ -529,6 +532,25 @@ export function Management({
                 </>
               )}
               {page === "products" && input("SKU", "sku")}
+              {page === "activities" && (
+                <fieldset>
+                  <legend>Employee workflow</legend>
+                  <Check
+                    label="Requires design/product"
+                    checked={editing.requires_design !== false}
+                    onChange={(v) => update("requires_design", v)}
+                  />
+                  <Check
+                    label="Requires quantity"
+                    checked={editing.requires_quantity !== false}
+                    onChange={(v) => update("requires_quantity", v)}
+                  />
+                  <p className="muted tiny">
+                    Applies when new work starts. Sessions already in progress
+                    keep their original settings.
+                  </p>
+                </fieldset>
+              )}
               {page === "activities" && (
                 <fieldset>
                   <legend>Positions</legend>

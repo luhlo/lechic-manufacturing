@@ -1,5 +1,21 @@
 import paths from "./page-paths.json";
+import { allowed, firstPage, type Session } from "./types";
 export const pagePaths: Record<string, string> = paths;
+
+export function landingPage(
+  requested: string | undefined,
+  permissions: string[],
+  session: Session | null,
+) {
+  if (
+    session &&
+    session.status !== "completed" &&
+    allowed(permissions, "my_work.access")
+  )
+    return "work";
+  // Preserve explicit protected routes so access denial remains visible.
+  return requested ?? firstPage(permissions) ?? "work";
+}
 
 export function pageFromPath(
   path: string,

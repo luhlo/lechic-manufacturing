@@ -9,6 +9,8 @@ Supabase organization **le chic** owns **Le Chic Manufacturing**, project `bbbgr
 - `20260926011457_advisor_indexes.sql`
 - `20260926033822_username_and_device_pin_login.sql`
 - `20260926050941_position_access_and_pin_expiration.sql`
+- `20260926053636_optional_pin_expiration_date.sql`
+- `20260926224939_employee_workflow_options.sql` (see [My Work workflow and validation](MY-WORK.md))
 
 `supabase/bootstrap-admin.sql` reserved **lechicmiami@gmail.com**, display name **Le Chic Miami**, with the Administrator role. No owner password was created and no email was sent. Local `.env.local` and the Site runtime have the project URL and modern publishable key. The frontend uses no service-role key; the protected login Edge Function uses Supabase’s built-in server key. Temporary QA users and all QA manufacturing/catalog rows were removed; employee KPI visibility is OFF.
 

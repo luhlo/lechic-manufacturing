@@ -1451,3 +1451,42 @@ legend {
 .dashboard-totals strong {
   font-size: 1.8rem;
 }
+
+/* Phone-first My Work controls. Management layout is unchanged. */
+.employee-panel { overflow-wrap: anywhere; }
+.employee-panel .button, .employee-panel .back-link { min-height: 48px; }
+.employee-panel .jumbo { min-height: 64px; }
+.employee-panel .back-link { margin-bottom: 14px; }
+.employee-panel .activity-tile, .employee-panel .design-tile { min-width: 0; }
+.employee-panel .activity-tile svg, .employee-panel .design-tile svg { flex-shrink: 0; }
+.employee-panel .design-tile > span { min-width: 0; }
+.employee-panel .design-tile small { color: #526b59; }
+.work-greeting { margin-bottom: 24px; color: #526b59; }
+.work-greeting p { font-size: 1.125rem; font-weight: 600; color: #234b37; }
+.work-greeting span { display: block; margin-top: 5px; font-size: .875rem; }
+.work-start { margin: 20px 0 36px; }
+.work-start h1 { font-size: 2rem; }
+.work-start h2 { margin: 20px 0 8px; font-size: 1.5rem; }
+.work-search { margin-top: 20px; }
+.active-work .timer-state { display: flex; justify-content: center; margin: 22px 0 0; font-size: 1rem; }
+.active-work .timer-value { margin-top: 22px; font-size: clamp(2.5rem, 10vw, 4.7rem); }
+.active-work .target-note { margin: 20px 0 0; }
+.active-work .quiet-note { color: #526b59; }
+.work-feedback { margin: 16px 0; text-align: center; color: #315b44; }
+.completion-saved { margin: 16px 0 24px; }
+.next-heading { margin: 24px 0 16px; font-size: 1.25rem; }
+.work-next-actions { display: grid; gap: 14px; }
+.active-work-return { width: 100%; min-height: 56px; margin-bottom: 24px; white-space: normal; }
+.employee-panel .quantity-form { margin-top: 26px; }
+.employee-panel .quantity { width: 100%; min-width: 0; font-size: clamp(1.5rem, 8vw, 3rem); }
+@media (max-width: 430px) {
+  .employee-panel .timer-card { padding: 24px 16px; }
+  .employee-panel .activity-grid { margin-top: 20px; }
+  .employee-panel .timer-actions { gap: 10px; }
+  .employee-panel .timer-actions > .button { padding: 14px 8px; font-size: 1rem; }
+  .employee-panel.complete-panel { padding-top: 10px; }
+}
+@media (max-width: 360px) {
+  .employee-panel .timer-actions { grid-template-columns: 1fr; }
+  .employee-panel .timer-actions > .button { min-height: 64px; flex-direction: row; }
+}

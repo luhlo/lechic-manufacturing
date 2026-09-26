@@ -1,5 +1,7 @@
 import { test, expect } from "vitest";
 import {
+  parseQuantity,
+  productionMetrics,
   applyCommand,
   chooseKpi,
   clockText,
@@ -297,4 +299,101 @@ test("old assignments do not clutter today's list", () => {
       "2026-09-25",
     ),
   ).toEqual([]);
+});
+
+test("quantity-free finish closes the timestamp and completes with NULL", () => {
+  const s = applyCommand(
+    {
+      ...session,
+      requires_design: false,
+      requires_quantity: false,
+      product_id: null,
+      product_name: "",
+      sku: "",
+    },
+    {
+      request_id: "finish-no-quantity",
+      session_id: "s",
+      action: "finish",
+      at: at(3600),
+      expected_revision: 1,
+    },
+  );
+  expect(s.status).toBe("completed");
+  expect(s.quantity).toBeNull();
+  expect(s.ended_at).toBe(at(3600));
+  expect(totals(s.segments, Date.parse(at(7200))).total).toBe(3600);
+  expect(() =>
+    applyCommand(s, {
+      request_id: "extra",
+      session_id: "s",
+      action: "complete",
+      quantity: 0,
+      at: at(3601),
+      expected_revision: 2,
+    }),
+  ).toThrow();
+});
+
+test("mixed time totals include quantity-free work but output rates exclude its time", () => {
+  const timed = (quantity: number | null, seconds: number): Session => ({
+    ...session,
+    quantity,
+    status: "completed",
+    ended_at: at(seconds),
+    segments: [{ ...session.segments[0], ended_at: at(seconds) }],
+  });
+  const s = [timed(12, 3600), timed(null, 7200), timed(0, 3600)];
+  const m = productionMetrics(s);
+  expect(m.total).toBe(14400);
+  expect(m.quantity).toBe(12);
+  expect(m.rateWork).toBe(7200);
+  expect(rate(m.quantity, m.rateWork)).toBe(6);
+  expect(productionMetrics([s[1]]).quantity).toBeNull();
+  expect(rate(null, 7200)).toBeNull();
+  expect(rate(0, 3600)).toBe(0);
+  expect(weightedBaseline(s, "2099-01-01", "a", "p")).toEqual({
+    rate: 6,
+    samples: 2,
+  });
+});
+
+test("numeric keypad entry rejects decimals, signs, exponent notation, spaces and overflow", () => {
+  for (const value of [
+    "",
+    " ",
+    "1.5",
+    "-1",
+    "+1",
+    "1e3",
+    "12 units",
+    "1000000001",
+  ])
+    expect(parseQuantity(value)).toBeNull();
+  for (const [value, expected] of [
+    ["0", 0],
+    ["024", 24],
+    ["1000000000", 1000000000],
+  ] as const)
+    expect(parseQuantity(value)).toBe(expected);
+});
+
+test("configured activities have a stable position-filtered alphabetical order", () => {
+  const activities = ["Zinc", "Painting", "Assembly"].map((name, id) => ({
+    id: String(id),
+    name,
+    active: true,
+  }));
+  const links = [
+    { activity_id: "0", position_id: "p" },
+    { activity_id: "1", position_id: "p" },
+  ];
+  expect(relevantActivities(activities, links, "p").map((a) => a.name)).toEqual(
+    ["Painting", "Zinc"],
+  );
+  expect(activities.map((a) => a.name)).toEqual([
+    "Zinc",
+    "Painting",
+    "Assembly",
+  ]);
 });

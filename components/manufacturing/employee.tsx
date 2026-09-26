@@ -9,20 +9,20 @@ import {
   Play,
   Search,
   Square,
-  Package,
 } from "lucide-react";
-import { toast } from "sonner";
 import type { CachedState, Product } from "@/lib/manufacturing/types";
 import { SessionStore } from "@/lib/manufacturing/api";
 import {
   clockText,
   currentAssignments,
   localDate,
+  parseQuantity,
   rate,
   relevantActivities,
   searchProducts,
   totals,
 } from "@/lib/manufacturing/domain";
+
 export function Employee({
   state,
   store,
@@ -42,6 +42,8 @@ export function Employee({
     [search, setSearch] = useState(false),
     [query, setQuery] = useState(""),
     [quantity, setQuantity] = useState(""),
+    [pending, setPending] = useState(""),
+    [workError, setWorkError] = useState(""),
     [now, setNow] = useState(() => Date.now()),
     [kpiState, setKpi] = useState<{
       sessionId: string;
@@ -49,16 +51,17 @@ export function Employee({
       target?: number | null;
     } | null>(null);
   const s = state.session;
-  const kpi =
-    state.context.visibility !== "OFF" && kpiState?.sessionId === s?.id
-      ? kpiState
-      : null;
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(tick);
   }, []);
   useEffect(() => {
-    if (!s?.id || state.context.visibility === "OFF") return;
+    if (
+      !s?.id ||
+      s.requires_quantity === false ||
+      state.context.visibility === "OFF"
+    )
+      return;
     const id = s.id;
     let live = true;
     store.api
@@ -74,7 +77,8 @@ export function Employee({
     return () => {
       live = false;
     };
-  }, [s?.id, state.context.visibility, store]);
+  }, [s?.id, s?.requires_quantity, state.context.visibility, store]);
+
   const acts = relevantActivities(
     state.catalog.activities,
     state.catalog.activity_positions,
@@ -84,104 +88,161 @@ export function Employee({
       ? state.context.profile.position_id
       : null,
   );
+  const selected = acts.find((a) => a.id === activity);
   const assigned = currentAssignments(
     state.catalog.assignments,
     state.context.profile.id,
-    localDate(),
+    localDate(new Date(now)),
+  ).filter((a) =>
+    state.catalog.products.some((p) => p.id === a.product_id && p.active),
   );
-  const visibleKpi =
-    state.context.visibility !== "OFF" && kpi?.sessionId === s?.id
-      ? { ...kpi, visibility: state.context.visibility }
+  const kpi =
+    s?.requires_quantity !== false &&
+    state.context.visibility !== "OFF" &&
+    kpiState?.visibility !== "OFF" &&
+    kpiState?.sessionId === s?.id
+      ? kpiState
       : null;
-  const blocked = busy || !!state.conflict;
-  const start = () =>
-    run(async () => {
-      await store.start(activity, product!.id, assignment);
-      setProduct(null);
-      setQuantity("");
-    });
+  const blocked = busy || !!pending || !!state.conflict;
+  const act = (label: string, fn: () => Promise<unknown>) => {
+    if (blocked) return;
+    setPending(label);
+    setWorkError("");
+    void run(async () => {
+      try {
+        return await fn();
+      } catch (error) {
+        const raw = error instanceof Error ? error.message : "";
+        // Only surface known, actionable device/recovery errors; never leak RPC details.
+        const friendly =
+          /clock|Start not confirmed|Reconnect|Sync or resolve|access is required/i.test(
+            raw,
+          )
+            ? raw
+            : "We couldn’t record that change. Try again before leaving this screen.";
+        setWorkError(friendly);
+        throw Error(friendly);
+      }
+    }).finally(() => setPending(""));
+  };
+  const feedback = (
+    <>
+      {pending && (
+        <p className="work-feedback" role="status">
+          {pending}
+        </p>
+      )}
+      {workError && (
+        <p className="notice error" role="alert">
+          {workError}
+        </p>
+      )}
+    </>
+  );
+  const resetSelection = (nextActivity = "") => {
+    setActivity(nextActivity);
+    setProduct(null);
+    setAssignment(null);
+    setQuantity("");
+    setSearch(false);
+    setQuery("");
+    setWorkError("");
+    window.scrollTo({ top: 0 });
+  };
+  const choose = (p: Product, id: string | null) => {
+    setProduct(p);
+    setAssignment(id);
+    setWorkError("");
+    window.scrollTo({ top: 0 });
+  };
+  const target = kpi?.target != null && (
+    <p className="target-note">Target: {kpi.target} units / work hour</p>
+  );
+
   if (s) {
     const t = totals(s.segments, now);
     const kind = s.segments.find((g) => !g.ended_at)?.kind;
-    const stateLabel =
-      kind === "WORK"
-        ? "WORKING"
-        : kind === "WALKING"
-          ? "WALKING"
-          : "INTERRUPTION";
-    if (s.status === "completed")
+    const context = [s.activity_name, s.product_name]
+      .filter(Boolean)
+      .join(" · ");
+    if (s.status === "completed") {
+      const canContinue = acts.some((a) => a.id === s.activity_id);
       return (
         <div className="employee-panel complete-panel">
           <span className="completion-mark">
             <Check size={38} />
           </span>
-          <p className="eyebrow">SESSION COMPLETE</p>
-          <h1>{s.quantity} units recorded.</h1>
-          <p>
-            {s.activity_name} · {s.product_name}
-          </p>
-          <div className="time-summary">
-            <div>
-              <strong>{clockText(t.work)}</strong>
-              <span>Working</span>
-            </div>
-            <div>
-              <strong>{clockText(t.walking)}</strong>
-              <span>Walking</span>
-            </div>
-            <div>
-              <strong>{clockText(t.interruption)}</strong>
-              <span>Interruption</span>
-            </div>
-          </div>
-          {visibleKpi && visibleKpi.target != null && (
-            <p className="target-note">
-              Target: {visibleKpi?.target} units / productive hour
-            </p>
-          )}
-          {visibleKpi?.visibility === "TARGET_AND_ACTUAL" && (
-            <p className="notice">
-              Actual: {rate(s.quantity ?? 0, t.work)?.toFixed(1) ?? "—"}{" "}
-              units/productive hour
-            </p>
-          )}
-          <p className="muted">
+          <h1>
+            {s.quantity === null
+              ? "Activity completed"
+              : `${s.quantity.toLocaleString()} completed`}
+          </h1>
+          <p>{context}</p>
+          <p className="muted completion-saved">
             {state.queue.length
-              ? "Saved on this device. Reconnect to sync before starting more work."
+              ? online
+                ? "Saved on this device. Sync before starting more work."
+                : "Saved on this device. Reconnect to sync before starting more work."
               : "Your session is saved."}
           </p>
-          <button
-            className="button primary jumbo"
-            disabled={blocked || state.queue.length > 0}
-            onClick={() =>
-              void run(async () => {
-                await store.clearCompleted();
-                setActivity("");
-                setProduct(null);
-                setQuantity("");
-              })
-            }
-          >
-            Next activity <ArrowRight />
-          </button>
+          {target}
+          {kpi && state.context.visibility === "TARGET_AND_ACTUAL" && (
+            <p className="target-note">
+              Actual: {rate(s.quantity, t.work)?.toFixed(1) ?? "—"} units / work
+              hour
+            </p>
+          )}
+          <h2 className="next-heading">What’s next?</h2>
+          <div className="work-next-actions">
+            <button
+              className="button primary jumbo"
+              disabled={blocked || !!state.queue.length || !canContinue}
+              onClick={() =>
+                act("Getting your next task…", async () => {
+                  await store.clearCompleted();
+                  resetSelection(s.activity_id);
+                })
+              }
+            >
+              Continue same activity <ArrowRight />
+            </button>
+            <button
+              className="button secondary jumbo"
+              disabled={blocked || !!state.queue.length}
+              onClick={() =>
+                act("Getting your activities…", async () => {
+                  await store.clearCompleted();
+                  resetSelection();
+                })
+              }
+            >
+              Choose different activity
+            </button>
+          </div>
+          {!canContinue && (
+            <p className="quiet-note">
+              This activity is no longer available. Choose another activity.
+            </p>
+          )}
+          {feedback}
         </div>
       );
-    if (s.status === "awaiting_quantity")
+    }
+    if (s.status === "awaiting_quantity") {
+      const parsed = parseQuantity(quantity);
       return (
         <div className="employee-panel">
           <p className="eyebrow">WORK FINISHED · TIMER STOPPED</p>
-          <h1>How many units?</h1>
-          <p className="muted">
-            {s.activity_name} · {s.product_name}
-          </p>
+          <h1>How many did you complete?</h1>
+          <p className="muted">{context}</p>
           <form
             className="form-stack quantity-form"
             onSubmit={(e) => {
               e.preventDefault();
-              void run(async () => {
-                await store.command("complete", { quantity: Number(quantity) });
-                toast.success("Quantity recorded");
-              });
+              if (parsed !== null)
+                act("Saving…", () =>
+                  store.command("complete", { quantity: parsed }),
+                );
             }}
           >
             <label className="field">
@@ -189,76 +250,63 @@ export function Employee({
               <input
                 className="quantity"
                 autoFocus
-                type="number"
+                type="text"
                 inputMode="numeric"
-                min="0"
-                max="1000000000"
-                step="1"
+                pattern="[0-9]+"
+                maxLength={10}
                 required
                 value={quantity}
+                aria-describedby="quantity-help"
                 onChange={(e) => setQuantity(e.target.value)}
                 placeholder="0"
               />
             </label>
+            <p
+              id="quantity-help"
+              className={quantity && parsed === null ? "notice error" : "muted"}
+            >
+              {quantity && parsed === null
+                ? "Enter a whole number from 0 to 1,000,000,000."
+                : "Enter the number completed. Zero is okay."}
+            </p>
             <button
               className="button primary jumbo"
-              disabled={blocked || quantity === ""}
+              disabled={blocked || parsed === null}
             >
-              Save quantity <Check />
+              {pending === "Saving…" ? "Saving…" : "Save"} <Check />
             </button>
           </form>
-          <p className="muted">Total elapsed: {clockText(t.total)}</p>
+          {feedback}
         </div>
       );
+    }
     return (
-      <div className="employee-panel">
-        <div className="employee-heading">
-          <span>{state.context.profile.name}</span>
-          <span className="eyebrow">ACTIVE SESSION</span>
-        </div>
+      <div className="employee-panel active-work">
         <div className={"timer-card " + kind?.toLowerCase()}>
-          <span className="timer-state">
-            <i />
-            {stateLabel}
-          </span>
           <h1>{s.activity_name}</h1>
-          <p>{s.product_name}</p>
-          <span className="sku">{s.sku}</span>
+          {s.product_name && <p>{s.product_name}</p>}
           <div className="timer-value" aria-label="Elapsed total time">
             {clockText(t.total)}
           </div>
           <span className="timer-caption">TOTAL ELAPSED</span>
-          <div className="timer-breakdown">
-            <div>
-              <strong>{clockText(t.work)}</strong>
-              <span>Working</span>
-            </div>
-            <div>
-              <strong>{clockText(t.walking)}</strong>
-              <span>Walking</span>
-            </div>
-            <div>
-              <strong>{clockText(t.interruption)}</strong>
-              <span>Interruption</span>
-            </div>
+          <div className="timer-state" role="status">
+            <i />
+            {kind === "WORK"
+              ? "WORKING"
+              : kind === "WALKING"
+                ? "WALKING"
+                : "INTERRUPTION"}
           </div>
         </div>
-        {visibleKpi && visibleKpi.target != null && (
-          <div className="target-note">
-            Target:{" "}
-            <strong>{visibleKpi?.target} units / productive hour</strong>
-            {visibleKpi.visibility === "TARGET_AND_ACTUAL" && (
-              <small>Actual rate appears after quantity is saved.</small>
-            )}
-          </div>
-        )}
         {kind === "WORK" ? (
           <div className="timer-actions">
             <button
               className="button walking-button"
               disabled={blocked}
               onClick={() =>
-                void run(() => store.command("transition", { kind: "WALKING" }))
+                act("Switching to Walking…", () =>
+                  store.command("transition", { kind: "WALKING" }),
+                )
               }
             >
               <Footprints />
@@ -268,7 +316,7 @@ export function Employee({
               className="button interruption-button"
               disabled={blocked}
               onClick={() =>
-                void run(() =>
+                act("Recording interruption…", () =>
                   store.command("transition", { kind: "INTERRUPTION" }),
                 )
               }
@@ -282,7 +330,9 @@ export function Employee({
             className="button primary jumbo"
             disabled={blocked}
             onClick={() =>
-              void run(() => store.command("transition", { kind: "WORK" }))
+              act("Resuming work…", () =>
+                store.command("transition", { kind: "WORK" }),
+              )
             }
           >
             <Play />
@@ -292,11 +342,13 @@ export function Employee({
         <button
           className="button finish-button jumbo"
           disabled={blocked}
-          onClick={() => void run(() => store.command("finish"))}
+          onClick={() => act("Finishing…", () => store.command("finish"))}
         >
           <Square />
           Finish
         </button>
+        {feedback}
+        {target}
         <p className="quiet-note">
           Your timer continues when you lock your phone.
         </p>
@@ -310,199 +362,192 @@ export function Employee({
         <p>
           Your start request is saved. Reconnect and tap Sync to recover it.
         </p>
+        {feedback}
       </div>
     );
   return (
     <div className="employee-panel">
-      <div className="employee-heading">
-        <span>{state.context.profile.name}</span>
-        <span className="eyebrow">READY TO WORK</span>
-      </div>
-      {activity ? (
+      {!selected ? (
         <>
-          <button
-            className="back-link"
-            onClick={() => {
-              setActivity("");
-              setProduct(null);
-              setSearch(false);
-            }}
-          >
-            <ArrowLeft size={18} />
-            Activities
-          </button>
-          <p className="eyebrow">
-            {state.catalog.activities.find((a) => a.id === activity)?.name}
-          </p>
-          <h1>{product ? "Ready when you are." : "Choose a design."}</h1>
-          {product ? (
-            <>
-              <div className="selected-design">
-                <Package size={32} />
-                <h2>{product.name}</h2>
-                <p>{product.sku}</p>
-              </div>
-              <button
-                className="button primary jumbo"
-                disabled={blocked || !online}
-                onClick={() => void start()}
-              >
-                <Play />
-                Start work
-              </button>
-              <button
-                className="back-link centered"
-                onClick={() => setProduct(null)}
-              >
-                Choose a different design
-              </button>
-              {!online && (
-                <p className="notice">Reconnect to start a new session.</p>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="section-label">
-                <h2>{search ? "All designs" : "Your assignments"}</h2>
-                <span>
-                  {search
-                    ? searchProducts(state.catalog.products, query).length
-                    : assigned.length}
-                </span>
-              </div>
-              {search && (
-                <label className="search-box">
-                  <Search size={20} />
-                  <input
-                    autoFocus
-                    aria-label="Search all designs"
-                    placeholder="Search name or SKU"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                </label>
-              )}
-              <div className="design-list">
-                {search
-                  ? searchProducts(state.catalog.products, query).map((p) => (
-                      <button
-                        className="design-tile"
-                        key={p.id}
-                        onClick={() => {
-                          setProduct(p);
-                          setAssignment(null);
-                        }}
-                      >
-                        <span className="design-icon">
-                          <Package />
-                        </span>
-                        <span>
-                          <strong>{p.name}</strong>
-                          <small>{p.sku}</small>
-                        </span>
-                        <ArrowRight />
-                      </button>
-                    ))
-                  : assigned.map((a) => {
-                      const p = state.catalog.products.find(
-                        (p) => p.id === a.product_id && p.active,
-                      );
-                      return p ? (
-                        <button
-                          className="design-tile"
-                          key={a.id}
-                          onClick={() => {
-                            setProduct(p);
-                            setAssignment(a.id);
-                          }}
-                        >
-                          <span className="design-icon">
-                            <Package />
-                          </span>
-                          <span>
-                            <strong>{p.name}</strong>
-                            <small>
-                              {p.sku}
-                              {a.target_quantity != null
-                                ? ` · ${a.target_quantity} units`
-                                : ""}
-                            </small>
-                            {a.notes && <small>{a.notes}</small>}
-                          </span>
-                          <ArrowRight />
-                        </button>
-                      ) : null;
-                    })}
-              </div>
-              {!search && !assigned.length && (
-                <p className="empty">
-                  No current assignments. Search all designs to begin.
-                </p>
-              )}
-              <button
-                className="button secondary jumbo"
-                onClick={() => {
-                  setSearch(!search);
-                  setQuery("");
-                }}
-              >
-                <Search size={20} />
-                {search ? "Back to assignments" : "Search all designs"}
-              </button>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <p className="eyebrow">LET’S GET STARTED</p>
+          <div className="work-greeting">
+            <p>Hi, {state.context.profile.name.trim().split(/\s+/)[0]}</p>
+            <span>
+              {new Date(now).toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </span>
+          </div>
           <h1>What are you working on?</h1>
-          <p className="muted">Choose your activity.</p>
           <div className="activity-grid">
-            {acts.map((a, i) => (
+            {acts.map((a) => (
               <button
                 className="activity-tile"
                 key={a.id}
-                onClick={() => setActivity(a.id)}
+                disabled={blocked}
+                onClick={() => resetSelection(a.id)}
               >
-                <span className="tile-number">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
                 <strong>{a.name}</strong>
                 <ArrowRight size={23} />
               </button>
             ))}
           </div>
           {!acts.length && (
-            <div className="empty">
+            <p className="empty">
               Your manager needs to assign a position and link activities to it.
-            </div>
+            </p>
           )}
-          <div className="assignment-preview">
-            <ClipboardIcon />
-            <div>
-              <strong>
-                {assigned.length} current assignment
-                {assigned.length === 1 ? "" : "s"}
-              </strong>
-              <p>
-                {assigned
-                  .map(
-                    (a) =>
-                      state.catalog.products.find((p) => p.id === a.product_id)
-                        ?.name,
-                  )
-                  .filter(Boolean)
-                  .slice(0, 3)
-                  .join(" · ") ||
-                  "Assigned designs will appear after you choose an activity."}
-              </p>
-            </div>
-          </div>
+        </>
+      ) : (
+        <>
+          <button
+            className="back-link"
+            disabled={blocked}
+            onClick={() => resetSelection()}
+          >
+            <ArrowLeft size={18} />
+            Activities
+          </button>
+          {selected.requires_design === false || product ? (
+            <>
+              <div className="work-start">
+                <h1>{selected.name}</h1>
+                {product && (
+                  <>
+                    <h2>{product.name}</h2>
+                    <p className="muted">SKU: {product.sku}</p>
+                  </>
+                )}
+              </div>
+              <button
+                className="button primary jumbo"
+                disabled={blocked || !online}
+                onClick={() =>
+                  act("Starting…", async () => {
+                    await store.start(
+                      selected.id,
+                      selected.requires_design === false ? null : product!.id,
+                      selected.requires_design === false ? null : assignment,
+                    );
+                    setQuantity("");
+                    setProduct(null);
+                  })
+                }
+              >
+                <Play />
+                {pending ? "Starting…" : "Start"}
+              </button>
+              {selected.requires_design !== false && (
+                <button
+                  className="back-link centered"
+                  disabled={blocked}
+                  onClick={() => {
+                    setProduct(null);
+                    setAssignment(null);
+                  }}
+                >
+                  Choose a different design
+                </button>
+              )}
+              {!online && (
+                <p className="notice">Reconnect to start a new session.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="eyebrow">{selected.name}</p>
+              <h1>Choose a design.</h1>
+              <div className="section-label">
+                <h2>Today’s work</h2>
+                <span>{assigned.length}</span>
+              </div>
+              <div className="design-list">
+                {assigned.map((a) => {
+                  const p = state.catalog.products.find(
+                    (p) => p.id === a.product_id,
+                  )!;
+                  return (
+                    <button
+                      className="design-tile"
+                      key={a.id}
+                      disabled={blocked}
+                      onClick={() => choose(p, a.id)}
+                    >
+                      <span>
+                        <strong>{p.name}</strong>
+                        <small>{p.sku}</small>
+                        {a.target_quantity != null && (
+                          <small>
+                            {a.completed_quantity != null &&
+                            a.completed_quantity > 0
+                              ? `${a.completed_quantity} / ${a.target_quantity} completed`
+                              : `${a.target_quantity} assigned`}
+                          </small>
+                        )}
+                      </span>
+                      <ArrowRight />
+                    </button>
+                  );
+                })}
+              </div>
+              {!assigned.length && (
+                <p className="empty">
+                  No assignments for today. Search for a design to begin.
+                </p>
+              )}
+              <button
+                className="button secondary jumbo"
+                aria-expanded={search}
+                disabled={blocked}
+                onClick={() => setSearch(!search)}
+              >
+                <Search size={20} />
+                Search another design
+              </button>
+              {search && (
+                <section
+                  className="work-search"
+                  aria-label="Search another design"
+                >
+                  <label className="search-box">
+                    <Search size={20} />
+                    <input
+                      autoFocus
+                      aria-label="Search name or SKU"
+                      placeholder="Search name or SKU"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                  </label>
+                  <div className="design-list">
+                    {searchProducts(state.catalog.products, query).map((p) => (
+                      <button
+                        className="design-tile"
+                        key={p.id}
+                        disabled={blocked}
+                        onClick={() => choose(p, null)}
+                      >
+                        <span>
+                          <strong>{p.name}</strong>
+                          <small>{p.sku}</small>
+                        </span>
+                        <ArrowRight />
+                      </button>
+                    ))}
+                  </div>
+                  {!searchProducts(state.catalog.products, query).length && (
+                    <p className="empty">
+                      No designs match. Try another name or SKU.
+                    </p>
+                  )}
+                </section>
+              )}
+            </>
+          )}
         </>
       )}
+      {feedback}
     </div>
   );
-}
-function ClipboardIcon() {
-  return <Package size={23} />;
 }

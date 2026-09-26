@@ -32,11 +32,14 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Api, SessionStore, clientFor, message } from "@/lib/manufacturing/api";
-import { pageFromPath, pathForPage } from "@/lib/manufacturing/routes";
+import {
+  landingPage,
+  pageFromPath,
+  pathForPage,
+} from "@/lib/manufacturing/routes";
 import {
   allowed,
   canViewPage,
-  firstPage,
   type CachedState,
 } from "@/lib/manufacturing/types";
 import { Employee } from "./employee";
@@ -143,6 +146,7 @@ export function ManufacturingApp({
     async (api: Api, uid: string) => {
       const n = ++version.current;
       const s = new SessionStore(api, uid);
+      s.onPersist = () => publish(s);
       storeRef.current = s;
       setStore(s);
       setState(null);
@@ -153,9 +157,14 @@ export function ManufacturingApp({
         if (n !== version.current) return;
         publish(s);
         const requested = pageFromPath(window.location.pathname);
-        const fallback = firstPage(s.state!.context.permissions) ?? "work";
-        // Keep an explicitly requested protected page so denial is visible.
-        navigate(requested ?? fallback, true);
+        navigate(
+          landingPage(
+            requested,
+            s.state!.context.permissions,
+            s.state!.session,
+          ),
+          true,
+        );
       } catch (e) {
         if (n === version.current) {
           setError(message(e));
@@ -470,6 +479,20 @@ export function ManufacturingApp({
               "main-content " + (current === "work" ? "work-content" : "")
             }
           >
+            {current !== "work" &&
+              allowed(state.context.permissions, "my_work.access") &&
+              state.session &&
+              state.session.status !== "completed" && (
+                <button
+                  className="button primary active-work-return"
+                  onClick={() => navigate("work")}
+                >
+                  <Timer />
+                  {state.session.status === "running"
+                    ? "Timer is running · Return to My Work"
+                    : "Finish saving your quantity · My Work"}
+                </button>
+              )}
             {current === "denied" ? (
               <section className="settings-card" role="alert">
                 <h1>Access unavailable</h1>

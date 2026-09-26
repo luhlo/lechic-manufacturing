@@ -93,7 +93,7 @@ export function Dashboard({ api, lastSync }: { api: Api; lastSync: string }) {
             rows={summary.active.map((s) => [
               s.employee_name,
               s.activity_name,
-              s.product_name,
+              s.product_name || "No design",
               s.status === "awaiting_quantity"
                 ? "Awaiting quantity"
                 : "Running",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { publicConfiguration } from "../build/public-env";
-import { pageFromPath, pathForPage, appHome } from "../lib/manufacturing/routes";
+import type { Session } from "../lib/manufacturing/types";
+import { landingPage, pageFromPath, pathForPage, appHome } from "../lib/manufacturing/routes";
 import { deploymentBase } from "../build/base-path.mjs";
 const url = "https://bbbgrxvidrlmrrezfmil.supabase.co";
 const env = { NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test_public_only" };
@@ -60,5 +61,20 @@ describe("GitHub Pages project paths", () => {
     expect(deploymentBase("/")).toBe("/");
     for (const invalid of ["../", "/../", "https://elsewhere/", "//elsewhere/", "/repo/?redirect=elsewhere"])
       expect(() => deploymentBase(invalid)).toThrow();
+  });
+});
+
+describe("My Work landing and recovery", () => {
+  it("lands a My Work-only employee directly on work after login", () => {
+    expect(landingPage(undefined, ["my_work.access"], null)).toBe("work");
+  });
+  it("restores running and awaiting-quantity sessions ahead of another permitted page", () => {
+    for (const status of ["running", "awaiting_quantity"] as const)
+      expect(landingPage("analytics", ["my_work.access", "analytics.view"], { status } as Session)).toBe("work");
+  });
+  it("preserves protected-route denial, additional navigation and revoked access", () => {
+    expect(landingPage("analytics", ["my_work.access"], null)).toBe("analytics");
+    expect(landingPage("analytics", ["my_work.access", "analytics.view"], { status: "completed" } as Session)).toBe("analytics");
+    expect(landingPage("analytics", ["analytics.view"], { status: "running" } as Session)).toBe("analytics");
   });
 });

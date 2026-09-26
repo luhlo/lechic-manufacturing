@@ -105,6 +105,37 @@ export class Api {
         (c as unknown as Record<string, unknown>)[name] = all;
       }),
     );
+    if (context && allowed(context.permissions, "my_work.access")) {
+      const own = c.assignments.filter(
+        (a) =>
+          a.employee_id === context.profile.id &&
+          a.work_date === localDate() &&
+          ["assigned", "in_progress"].includes(a.status),
+      );
+      for (let i = 0; i < own.length; i += 500) {
+        let progress: { id: string; completed_quantity: number }[];
+        try {
+          progress = await this.rpc("assignment_progress", {
+            p_ids: own.slice(i, i + 500).map((a) => a.id),
+          });
+        } catch (error) {
+          if (
+            isDenial(error) ||
+            hasCode(error, "PGRST301") ||
+            hasCode(error, "PGRST303")
+          )
+            throw error;
+          // Optional progress must not block today's work if this read fails.
+          break;
+        }
+        const counts = new Map(
+          progress.map((p) => [p.id, p.completed_quantity]),
+        );
+        own.slice(i, i + 500).forEach((a) => {
+          a.completed_quantity = counts.get(a.id);
+        });
+      }
+    }
     return c;
   }
   async sessions(filter: SessionFilter): Promise<Session[]> {
@@ -195,6 +226,7 @@ function transaction(
 export class SessionStore {
   state: CachedState | null = null;
   syncing = false;
+  onPersist?: () => void;
   constructor(
     public api: Api,
     public uid: string,
@@ -273,7 +305,7 @@ export class SessionStore {
   }
   async start(
     activityId: string,
-    productId: string,
+    productId: string | null,
     assignmentId: string | null,
   ) {
     return this.exclusive(async () => {
@@ -334,6 +366,7 @@ export class SessionStore {
       };
       await this.disk.write(this.uid, next);
       this.state = next;
+      this.onPersist?.();
       await this.syncUnlocked();
       return this.state.session;
     });

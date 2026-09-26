@@ -6,6 +6,8 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
   await db.exec(
     `create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz default now(),banned_until timestamptz);create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;grant usage on schema auth to anon,authenticated;grant execute on all functions in schema auth to anon,authenticated;`,
   );
+  let legacySession: unknown;
+  let legacyActivity: unknown;
   for (const file of readdirSync("supabase/migrations")
     .filter((f) => f.endsWith(".sql"))
     .sort()) {
@@ -16,7 +18,58 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
           insert into public.profile_roles select '50000000-0000-4000-8000-000000000001',id from public.roles where name='Administrator';
           insert into private.login_pins(profile_id,auth_user_id,digest,updated_at) values('50000000-0000-4000-8000-000000000001','50000000-0000-4000-8000-000000000001',repeat('f',64),'2020-01-01');`);
     }
+    if (file.includes("employee_workflow_options")) {
+      await db.exec(`begin;
+        insert into public.activities(id,name) values('60000000-0000-4000-8000-000000000001','Legacy activity');
+        insert into public.products(id,name,sku) values('60000000-0000-4000-8000-000000000001','Legacy design','LEGACY');
+        insert into public.profiles(id,email,name) values('60000000-0000-4000-8000-000000000001','legacy@example.invalid','Legacy worker');
+        insert into public.sessions(id,employee_id,activity_id,product_id,employee_name,position_name,activity_name,product_name,sku,started_at,ended_at,status,quantity,revision)
+          values('60000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','Legacy worker','','Legacy activity','Legacy design','LEGACY',now()-interval '60 seconds',now(),'completed',17,3);
+        insert into public.segments(id,session_id,kind,started_at,ended_at,ordinal)
+          values('60000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','WORK',now()-interval '60 seconds',now(),1);
+        commit;`);
+      legacySession = (
+        await db.query(
+          `select to_jsonb(s) as data from public.sessions s where id='60000000-0000-4000-8000-000000000001'`,
+        )
+      ).rows;
+      legacyActivity = (
+        await db.query(
+          `select to_jsonb(a) as data from public.activities a where id='60000000-0000-4000-8000-000000000001'`,
+        )
+      ).rows;
+    }
     await db.exec(readFileSync("supabase/migrations/" + file, "utf8"));
+    if (file.includes("employee_workflow_options")) {
+      expect(
+        (
+          await db.query(
+            `select to_jsonb(s)-'requires_design'-'requires_quantity' as data from public.sessions s where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual(legacySession);
+      expect(
+        (
+          await db.query(
+            `select to_jsonb(a)-'requires_design'-'requires_quantity' as data from public.activities a where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual(legacyActivity);
+      expect(
+        (
+          await db.query(
+            `select requires_design,requires_quantity from public.sessions where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual([{ requires_design: true, requires_quantity: true }]);
+      await db.exec(`begin;
+        delete from public.segments where session_id='60000000-0000-4000-8000-000000000001';
+        delete from public.sessions where id='60000000-0000-4000-8000-000000000001';
+        delete from public.profiles where id='60000000-0000-4000-8000-000000000001';
+        delete from public.products where id='60000000-0000-4000-8000-000000000001';
+        delete from public.activities where id='60000000-0000-4000-8000-000000000001';
+        commit;`);
+    }
     if (file.includes("position_access_and_pin_expiration")) {
       const migration =
         await db.query(`select not p.pin_expiration_enabled as disabled, lp.updated_at='2020-01-01'::timestamptz as timestamp_preserved, lp.digest=repeat('f',64) as digest_preserved,
@@ -61,5 +114,9 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/pin_expiration_date.sql", "utf8"),
   );
   expect(JSON.stringify(fixedDate)).toContain("PASS:");
+  const workflow = await db.exec(
+    readFileSync("supabase/tests/employee_workflow.sql", "utf8"),
+  );
+  expect(JSON.stringify(workflow)).toContain("PASS:");
   await db.close();
 });

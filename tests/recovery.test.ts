@@ -386,3 +386,84 @@ test("permission revocation refreshes even when saved work has a conflict", asyn
   expect(s.state?.conflict).toBeTruthy();
   await expect(s.start("a", "d", null)).rejects.toThrow("My work access");
 });
+
+test("quantity-free offline finish survives reopening and an uncertain replay without duplicates", async () => {
+  const api = new Network();
+  api.server = {
+    ...fresh(),
+    requires_design: false,
+    requires_quantity: false,
+    product_id: null,
+    product_name: "",
+    sku: "",
+  };
+  const d = disk(),
+    s = new SessionStore(api, "u", d.storage);
+  await s.load();
+  api.online = false;
+  await s.command("transition", { kind: "WALKING" });
+  await s.command("transition", { kind: "WORK" });
+  await s.command("finish");
+  const endedAt = s.state?.session?.ended_at;
+  expect(s.state?.session?.status).toBe("completed");
+  expect(s.state?.session?.quantity).toBeNull();
+  const reopened = new SessionStore(api, "u", d.storage);
+  await reopened.load();
+  expect(reopened.state?.queue).toHaveLength(3);
+  expect(reopened.state?.session?.ended_at).toBe(endedAt);
+  await reopened.clearCompleted();
+  expect(reopened.state?.session?.status).toBe("completed");
+  api.online = true;
+  api.uncertain = true;
+  await reopened.sync();
+  await reopened.sync();
+  expect(api.receipts.size).toBe(3);
+  expect(reopened.state?.queue).toHaveLength(0);
+  expect(api.server?.quantity).toBeNull();
+  expect(api.server?.ended_at).toBe(endedAt);
+  expect(api.server?.segments).toHaveLength(3);
+});
+
+test("no-design start sends NULL instead of inventing a product", async () => {
+  const api = new Network();
+  api.server = null;
+  const rpc = api.rpc.bind(api),
+    commands: Command[] = [];
+  api.rpc = async (name, args) => {
+    if (name === "session_command") commands.push(args!.p as Command);
+    return rpc(name, args);
+  };
+  const s = new SessionStore(api, "u", disk().storage);
+  await s.load();
+  await s.start("a", null, null);
+  expect(commands[0].product_id).toBeNull();
+  expect(commands[0].assignment_id).toBeNull();
+});
+
+test("Finish publishes the durably stopped session before a slow network acknowledgement", async () => {
+  const api = new Network(),
+    d = disk(),
+    s = new SessionStore(api, "u", d.storage);
+  await s.load();
+  const rpc = api.rpc.bind(api);
+  let release!: () => void, notified!: () => void;
+  const network = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const persisted = new Promise<void>((resolve) => {
+    notified = resolve;
+  });
+  api.rpc = async (name, args) => {
+    if (name === "session_command") await network;
+    return rpc(name, args);
+  };
+  s.onPersist = notified;
+  const finished = s.command("finish");
+  await persisted;
+  expect(s.state?.session?.status).toBe("awaiting_quantity");
+  expect(d.map.get("u")?.session?.ended_at).toBe(s.state?.session?.ended_at);
+  expect(api.server?.status).toBe("running");
+  release();
+  await finished;
+  expect(s.state?.queue).toHaveLength(0);
+});

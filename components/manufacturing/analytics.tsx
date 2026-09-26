@@ -15,6 +15,7 @@ import {
   clockText,
   localDate,
   normalize,
+  productionMetrics,
   rate,
   totals,
 } from "@/lib/manufacturing/domain";
@@ -90,10 +91,12 @@ export function Analytics({
         > = {};
         const pairs = [
           ...new Map(
-            completed.map((s) => [
-              s.activity_id + ":" + s.product_id,
-              { activity_id: s.activity_id, product_id: s.product_id },
-            ]),
+            completed
+              .filter((s) => s.quantity !== null)
+              .map((s) => [
+                s.activity_id + ":" + s.product_id,
+                { activity_id: s.activity_id, product_id: s.product_id },
+              ]),
           ).values(),
         ];
         for (let i = 0; i < completed.length; i += 500) {
@@ -108,7 +111,7 @@ export function Analytics({
           const rows = await api.rpc<
             {
               activity_id: string;
-              product_id: string;
+              product_id: string | null;
               rate: number | null;
               samples: number;
             }[]
@@ -162,41 +165,8 @@ export function Analytics({
       ),
     [sessions, from, to, employee, position, activity, product, sku],
   );
-  const sum = filtered.reduce(
-    (a, s) => {
-      const t = totals(s.segments);
-      return {
-        work: a.work + t.work,
-        walking: a.walking + t.walking,
-        interruption: a.interruption + t.interruption,
-        total: a.total + t.total,
-        quantity: a.quantity + (s.quantity ?? 0),
-        events: a.events + t.walkingEvents,
-        interruptions: a.interruptions + t.interruptionEvents,
-      };
-    },
-    {
-      work: 0,
-      walking: 0,
-      interruption: 0,
-      total: 0,
-      quantity: 0,
-      events: 0,
-      interruptions: 0,
-    },
-  );
-  const grouped = new Map<
-    string,
-    {
-      label: string;
-      quantity: number;
-      work: number;
-      walking: number;
-      interruption: number;
-      total: number;
-      events: number;
-    }
-  >();
+  const sum = productionMetrics(filtered);
+  const groups = new Map<string, { label: string; sessions: Session[] }>();
   for (const s of filtered) {
     const key =
       group === "employee"
@@ -205,7 +175,7 @@ export function Analytics({
           ? (s.position_id ?? "none")
           : group === "activity"
             ? s.activity_id
-            : s.product_id;
+            : (s.product_id ?? "none");
     const label =
       group === "employee"
         ? s.employee_name
@@ -213,25 +183,15 @@ export function Analytics({
           ? s.position_name
           : group === "activity"
             ? s.activity_name
-            : s.product_name;
-    const a = grouped.get(key) ?? {
-      label,
-      quantity: 0,
-      work: 0,
-      walking: 0,
-      interruption: 0,
-      total: 0,
-      events: 0,
-    };
-    const t = totals(s.segments);
-    a.quantity += s.quantity ?? 0;
-    a.work += t.work;
-    a.walking += t.walking;
-    a.interruption += t.interruption;
-    a.total += t.total;
-    a.events += t.walkingEvents;
-    grouped.set(key, a);
+            : s.product_name || "No design";
+    const entry = groups.get(key) ?? { label, sessions: [] };
+    entry.sessions.push(s);
+    groups.set(key, entry);
   }
+  const grouped = [...groups.values()].map((g) => ({
+    label: g.label,
+    ...productionMetrics(g.sessions),
+  }));
   const active = sessions.filter((s) => s.status !== "completed");
   const options = (rows: { id: string; name?: string }[]) =>
     rows.map((r) => ({ value: r.id, label: r.name ?? r.id }));
@@ -372,13 +332,13 @@ export function Analytics({
         />
         <Metric
           label="Units / productive hour"
-          value={num(rate(sum.quantity, sum.work))}
-          note="Based on working time"
+          value={num(rate(sum.quantity, sum.rateWork))}
+          note="Working time from quantity-based sessions"
         />
         <Metric
           label="Units / elapsed hour"
-          value={num(rate(sum.quantity, sum.total))}
-          note="Includes walking & interruptions"
+          value={num(rate(sum.quantity, sum.rateTotal))}
+          note="Quantity-based sessions, including pauses"
         />
       </div>
       <div className="overview-grid">
@@ -455,7 +415,9 @@ export function Analytics({
                   <div>
                     <strong>{s.employee_name}</strong>
                     <p>
-                      {s.activity_name} · {s.product_name}
+                      {[s.activity_name, s.product_name]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                     <small>{s.sku}</small>
                   </div>
@@ -504,17 +466,17 @@ export function Analytics({
             "Units / productive hr",
             "Units / elapsed hr",
           ]}
-          rows={[...grouped.values()].map((g) => [
+          rows={grouped.map((g) => [
             <strong key="name">{g.label}</strong>,
-            g.quantity,
+            g.quantity ?? "Not applicable",
             duration(g.work),
             duration(g.walking),
             duration(g.interruption),
             g.events,
             duration(g.events ? g.walking / g.events : 0),
             `${num(g.total ? (g.walking / g.total) * 100 : 0)}%`,
-            num(rate(g.quantity, g.work)),
-            num(rate(g.quantity, g.total)),
+            num(rate(g.quantity, g.rateWork)),
+            num(rate(g.quantity, g.rateTotal)),
           ])}
         />
       </div>
@@ -547,14 +509,15 @@ export function Analytics({
                 <div key="name">
                   <strong>{s.employee_name}</strong>
                   <small className="table-small">
-                    {s.product_name} · {s.sku}
+                    {[s.product_name, s.sku].filter(Boolean).join(" · ") ||
+                      "No design"}
                   </small>
                 </div>,
                 s.activity_name,
-                s.quantity,
-                num(baseline.rate),
-                num(targets[s.id] ?? null),
-                num(rate(s.quantity ?? 0, t.work)),
+                s.quantity ?? "Not applicable",
+                num(s.quantity === null ? null : baseline.rate),
+                num(s.quantity === null ? null : (targets[s.id] ?? null)),
+                num(rate(s.quantity, t.work)),
                 <button
                   key="action"
                   className="edit-button"
@@ -570,7 +533,9 @@ export function Analytics({
       <p className="analytics-note">
         Completed sessions are included by their start date in your device’s
         local timezone. Entire sessions are counted, including sessions that
-        cross midnight. Active sessions are excluded from these totals.
+        cross midnight. Active sessions are excluded from these totals. Time
+        without quantity is included in time totals and excluded from production
+        rates.
       </p>
       <Dialog
         open={!!detail}
@@ -582,7 +547,9 @@ export function Analytics({
           <DialogHeader>
             <DialogTitle>{detail?.employee_name}</DialogTitle>
             <DialogDescription>
-              {detail?.activity_name} · {detail?.product_name} · {detail?.sku}
+              {[detail?.activity_name, detail?.product_name, detail?.sku]
+                .filter(Boolean)
+                .join(" · ")}
             </DialogDescription>
           </DialogHeader>
           {detail && (
@@ -603,7 +570,13 @@ export function Analytics({
                 ])}
               />
               <p>
-                Quantity: <strong>{detail.quantity ?? "Not entered"}</strong>
+                Quantity:{" "}
+                <strong>
+                  {detail.quantity ??
+                    (detail.status === "completed"
+                      ? "Not applicable"
+                      : "Not entered")}
+                </strong>
               </p>
             </>
           )}

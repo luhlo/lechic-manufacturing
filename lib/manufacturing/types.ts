@@ -21,6 +21,8 @@ export interface Profile extends Row {
 export interface Activity extends Row {
   name: string;
   active: boolean;
+  requires_design?: boolean;
+  requires_quantity?: boolean;
   position_ids?: string[];
 }
 export interface Product extends Row {
@@ -35,6 +37,7 @@ export interface Assignment extends Row {
   target_quantity: number | null;
   status: string;
   notes: string;
+  completed_quantity?: number;
 }
 export interface Segment {
   id: string;
@@ -47,7 +50,9 @@ export interface Session extends Row {
   employee_id: string;
   position_id: string | null;
   activity_id: string;
-  product_id: string;
+  product_id: string | null;
+  requires_design?: boolean;
+  requires_quantity?: boolean;
   assignment_id: string | null;
   employee_name: string;
   position_name: string;
@@ -68,7 +73,7 @@ export interface Command {
   at: string;
   expected_revision: number;
   activity_id?: string;
-  product_id?: string;
+  product_id?: string | null;
   assignment_id?: string | null;
   kind?: SegmentKind;
   quantity?: number;
