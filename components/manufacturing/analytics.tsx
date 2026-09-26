@@ -108,7 +108,7 @@ export function Analytics({
           const rows = await api.rpc<
             {
               activity_id: string;
-              product_id: string;
+              product_id: string | null;
               rate: number | null;
               samples: number;
             }[]
@@ -171,6 +171,9 @@ export function Analytics({
         interruption: a.interruption + t.interruption,
         total: a.total + t.total,
         quantity: a.quantity + (s.quantity ?? 0),
+        rateWork: a.rateWork + (s.quantity != null ? t.work : 0),
+        rateTotal: a.rateTotal + (s.quantity != null ? t.total : 0),
+        measured: a.measured + Number(s.quantity != null),
         events: a.events + t.walkingEvents,
         interruptions: a.interruptions + t.interruptionEvents,
       };
@@ -181,6 +184,7 @@ export function Analytics({
       interruption: 0,
       total: 0,
       quantity: 0,
+      rateWork: 0, rateTotal: 0, measured: 0,
       events: 0,
       interruptions: 0,
     },
@@ -190,6 +194,7 @@ export function Analytics({
     {
       label: string;
       quantity: number;
+      rateWork: number; rateTotal: number; measured: number;
       work: number;
       walking: number;
       interruption: number;
@@ -205,7 +210,7 @@ export function Analytics({
           ? (s.position_id ?? "none")
           : group === "activity"
             ? s.activity_id
-            : s.product_id;
+            : (s.product_id ?? "no-design");
     const label =
       group === "employee"
         ? s.employee_name
@@ -213,10 +218,11 @@ export function Analytics({
           ? s.position_name
           : group === "activity"
             ? s.activity_name
-            : s.product_name;
+            : (s.product_name || "No design" );
     const a = grouped.get(key) ?? {
       label,
       quantity: 0,
+      rateWork: 0, rateTotal: 0, measured: 0,
       work: 0,
       walking: 0,
       interruption: 0,
@@ -225,6 +231,7 @@ export function Analytics({
     };
     const t = totals(s.segments);
     a.quantity += s.quantity ?? 0;
+    if (s.quantity != null) { a.rateWork += t.work; a.rateTotal += t.total; a.measured++; }
     a.work += t.work;
     a.walking += t.walking;
     a.interruption += t.interruption;
@@ -362,7 +369,7 @@ export function Analytics({
       <div className="metrics-row primary-metrics">
         <Metric
           label="Units completed"
-          value={num(sum.quantity)}
+          value={num(sum.measured ? sum.quantity : null)}
           note={`${filtered.length} completed sessions`}
         />
         <Metric
@@ -372,12 +379,12 @@ export function Analytics({
         />
         <Metric
           label="Units / productive hour"
-          value={num(rate(sum.quantity, sum.work))}
+          value={num(rate(sum.measured ? sum.quantity : null, sum.rateWork))}
           note="Based on working time"
         />
         <Metric
           label="Units / elapsed hour"
-          value={num(rate(sum.quantity, sum.total))}
+          value={num(rate(sum.measured ? sum.quantity : null, sum.rateTotal))}
           note="Includes walking & interruptions"
         />
       </div>
@@ -506,15 +513,15 @@ export function Analytics({
           ]}
           rows={[...grouped.values()].map((g) => [
             <strong key="name">{g.label}</strong>,
-            g.quantity,
+            g.measured ? g.quantity : "—",
             duration(g.work),
             duration(g.walking),
             duration(g.interruption),
             g.events,
             duration(g.events ? g.walking / g.events : 0),
             `${num(g.total ? (g.walking / g.total) * 100 : 0)}%`,
-            num(rate(g.quantity, g.work)),
-            num(rate(g.quantity, g.total)),
+            num(rate(g.measured ? g.quantity : null, g.rateWork)),
+            num(rate(g.measured ? g.quantity : null, g.rateTotal)),
           ])}
         />
       </div>
@@ -547,14 +554,14 @@ export function Analytics({
                 <div key="name">
                   <strong>{s.employee_name}</strong>
                   <small className="table-small">
-                    {s.product_name} · {s.sku}
+                    {s.product_name || "No design"}{s.sku ? ` · ${s.sku}` : ""}
                   </small>
                 </div>,
                 s.activity_name,
-                s.quantity,
+                s.quantity ?? "—",
                 num(baseline.rate),
                 num(targets[s.id] ?? null),
-                num(rate(s.quantity ?? 0, t.work)),
+                num(rate(s.quantity, t.work)),
                 <button
                   key="action"
                   className="edit-button"
@@ -603,7 +610,7 @@ export function Analytics({
                 ])}
               />
               <p>
-                Quantity: <strong>{detail.quantity ?? "Not entered"}</strong>
+                Quantity: <strong>{detail.quantity ?? (detail.requires_quantity === false ? "Not applicable" : "Not entered")}</strong>
               </p>
             </>
           )}
