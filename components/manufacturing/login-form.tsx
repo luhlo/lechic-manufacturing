@@ -15,7 +15,7 @@ export function Auth({
   client: SupabaseClient | null;
   error: string;
 }) {
-  const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
+  const [mode, setMode] = useState<"login" | "reset">("login");
   const [device] = useState(savedPinDevice);
   const [method, setMethod] = useState<"password" | "pin">(() =>
     device ? "pin" : "password",
@@ -45,26 +45,17 @@ export function Auth({
   return (
     <>
       <p className="eyebrow">YOUR WORKSPACE</p>
-      <h2>
-        {mode === "signup"
-          ? "Create your account."
-          : mode === "reset"
-            ? "Reset your password."
-            : "Welcome back."}
-      </h2>
+      <h2>{mode === "reset" ? "Reset your password." : "Welcome back."}</h2>
       <p className="muted">
-        {mode === "signup"
-          ? "Use the email your manager added."
-          : mode === "reset"
-            ? "We’ll send a password reset link."
-            : pinMode
-              ? "Enter your PIN to start."
-              : "Sign in to record your work."}
+        {mode === "reset"
+          ? "We’ll send a password reset link."
+          : pinMode
+            ? "Enter your PIN to start."
+            : "Sign in to record your work."}
       </p>
       {!client && (
         <div className="notice">
-          The database connection is unavailable. You can explore the sample
-          workspace below.
+          The database connection is unavailable. Please try again shortly.
         </div>
       )}
       {error && (
@@ -174,17 +165,6 @@ export function Auth({
                 });
                 if (r.error) throw r.error;
                 setNotice("Check your email for the reset link.");
-              } else if (mode === "signup") {
-                const r = await client.auth.signUp({
-                  email: value,
-                  password,
-                  options: { emailRedirectTo: appHome(location.origin) },
-                });
-                if (r.error) throw r.error;
-                setNotice(
-                  "Check your email to confirm your account, then sign in.",
-                );
-                setPassword("");
               } else if (value.includes("@")) {
                 const r = await client.auth.signInWithPassword({
                   email: value,
@@ -218,10 +198,8 @@ export function Auth({
               <input
                 type="password"
                 required
-                minLength={mode === "signup" ? 10 : 1}
-                autoComplete={
-                  mode === "signup" ? "new-password" : "current-password"
-                }
+                minLength={1}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -230,11 +208,9 @@ export function Auth({
           <button className="button primary" disabled={busy || !client}>
             {busy
               ? "Please wait…"
-              : mode === "signup"
-                ? "Create account"
-                : mode === "reset"
-                  ? "Send reset link"
-                  : "Sign in"}
+              : mode === "reset"
+                ? "Send reset link"
+                : "Sign in"}
             <ArrowRight size={18} />
           </button>
           {notice && (
@@ -248,18 +224,6 @@ export function Auth({
         <button
           disabled={busy}
           onClick={() => {
-            setMode(mode === "signup" ? "login" : "signup");
-            setNotice("");
-            setPin("");
-            setPassword("");
-          }}
-        >
-          {" "}
-          {mode === "signup" ? "Back to sign in" : "First time here?"}
-        </button>
-        <button
-          disabled={busy}
-          onClick={() => {
             setMode(mode === "reset" ? "login" : "reset");
             setNotice("");
             setPin("");
@@ -269,6 +233,10 @@ export function Auth({
           {mode === "reset" ? "Back to sign in" : "Forgot password?"}
         </button>
       </div>
+      <p className="muted tiny">
+        Accounts are created by an administrator. Public registration is not
+        available.
+      </p>
     </>
   );
 }

@@ -17,7 +17,6 @@ import {
   RefreshCw,
   WifiOff,
   Menu,
-  ArrowRight,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -35,7 +34,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Api, SessionStore, clientFor, message } from "@/lib/manufacturing/api";
 import { pageFromPath, pathForPage } from "@/lib/manufacturing/routes";
-import { DemoApi, demoUid } from "@/lib/manufacturing/demo";
 import { allowed, type CachedState } from "@/lib/manufacturing/types";
 import { Employee } from "./employee";
 import { Management } from "./management";
@@ -108,10 +106,11 @@ export function ManufacturingApp({
   publishableKey: string;
 }) {
   const [client, setClient] = useState<SupabaseClient | null>(null),
-    [demo, setDemo] = useState(false),
     [store, setStore] = useState<SessionStore | null>(null),
     [state, setState] = useState<CachedState | null>(null),
-    [page, setPage] = useState(() => pageFromPath(window.location.pathname) ?? "work"),
+    [page, setPage] = useState(
+      () => pageFromPath(window.location.pathname) ?? "work",
+    ),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [online, setOnline] = useState(true),
@@ -122,19 +121,23 @@ export function ManufacturingApp({
     if (window.location.pathname !== path) {
       // Preserve auth callback values until Supabase consumes them.
       const destination = path + window.location.search + window.location.hash;
-      window.history[replace ? "replaceState" : "pushState"]({}, "", destination);
+      window.history[replace ? "replaceState" : "pushState"](
+        {},
+        "",
+        destination,
+      );
     }
     setPage(next);
   }, []);
   useEffect(() => {
-    const restoreRoute = () => setPage(pageFromPath(window.location.pathname) ?? "work");
+    const restoreRoute = () =>
+      setPage(pageFromPath(window.location.pathname) ?? "work");
     window.addEventListener("popstate", restoreRoute);
     return () => window.removeEventListener("popstate", restoreRoute);
   }, []);
   const storeRef = useRef<SessionStore | null>(null);
   const version = useRef(0);
   const busyRef = useRef(false);
-  const demoRef = useRef(false);
   const [reauth, setReauth] = useState(false);
   const publish = useCallback((s: SessionStore) => {
     if (storeRef.current === s)
@@ -154,10 +157,16 @@ export function ManufacturingApp({
         if (n !== version.current) return;
         publish(s);
         const requested = pageFromPath(window.location.pathname);
-        const fallback = s.state?.session || !allowed(s.state!.context.permissions, "analytics.view")
-          ? "work" : "dashboard";
+        const fallback =
+          s.state?.session ||
+          !allowed(s.state!.context.permissions, "analytics.view")
+            ? "work"
+            : "dashboard";
         const entry = navigation.find((n) => n.id === requested);
-        const permitted = entry && (!entry.permission || allowed(s.state!.context.permissions, entry.permission));
+        const permitted =
+          entry &&
+          (!entry.permission ||
+            allowed(s.state!.context.permissions, entry.permission));
         navigate(permitted ? requested! : fallback, true);
       } catch (e) {
         if (n === version.current) {
@@ -177,12 +186,12 @@ export function ManufacturingApp({
       if (cancelled) return;
       setOnline(navigator.onLine);
       if ("serviceWorker" in navigator && process.env.NODE_ENV === "production")
-        navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js", { scope: import.meta.env.BASE_URL, updateViaCache: "none" }).catch(() => {});
-      if (localStorage.getItem("manufacturing-demo-mode") === "true") {
-        setDemo(true);
-        demoRef.current = true;
-        void activate(new DemoApi(), demoUid);
-      }
+        navigator.serviceWorker
+          .register(import.meta.env.BASE_URL + "sw.js", {
+            scope: import.meta.env.BASE_URL,
+            updateViaCache: "none",
+          })
+          .catch(() => {});
       if (!url || !publishableKey) {
         setLoading(false);
         return;
@@ -198,19 +207,19 @@ export function ManufacturingApp({
       }
       const { data } = c.auth.onAuthStateChange((event, session) => {
         if (event === "PASSWORD_RECOVERY") {
-          localStorage.removeItem("manufacturing-demo-mode");
-          demoRef.current = false;
-          setDemo(false);
           setRecovery(true);
         }
-        if (demoRef.current) return;
         if (session) setReauth(false);
         if (event === "SIGNED_OUT") {
           version.current++;
           storeRef.current = null;
           setStore(null);
           setState(null);
-          window.history.replaceState({}, "", import.meta.env.BASE_URL + "login");
+          window.history.replaceState(
+            {},
+            "",
+            import.meta.env.BASE_URL + "login",
+          );
           setPage("work");
           setLoading(false);
         } else if (session && storeRef.current?.uid !== session.user.id) {
@@ -274,22 +283,8 @@ export function ManufacturingApp({
   };
   const signOut = async () => {
     await store?.signOut(async () => {
-      if (demo) {
-        localStorage.removeItem("manufacturing-demo-mode");
-        demoRef.current = false;
-        version.current++;
-        storeRef.current = null;
-        setStore(null);
-        setState(null);
-        setDemo(false);
-        navigate("work", true);
-        const session = await client?.auth.getSession();
-        if (client && session?.data.session)
-          void activate(new Api(client), session.data.session.user.id);
-      } else {
-        const result = await client?.auth.signOut({ scope: "local" });
-        if (result?.error) throw result.error;
-      }
+      const result = await client?.auth.signOut({ scope: "local" });
+      if (result?.error) throw result.error;
     });
   };
   if (recovery && client)
@@ -324,21 +319,6 @@ export function ManufacturingApp({
             ) : (
               <Auth client={client} error={error} />
             )}
-            <button
-              className="demo-link"
-              disabled={loading}
-              onClick={() => {
-                localStorage.setItem("manufacturing-demo-mode", "true");
-                setDemo(true);
-                demoRef.current = true;
-                void activate(new DemoApi(), demoUid);
-              }}
-            >
-              Explore with sample data <ArrowRight size={16} />
-            </button>
-            <p className="muted tiny">
-              The sample workspace stays on this device.
-            </p>
           </div>
         </div>
         <Toaster />
@@ -412,7 +392,6 @@ export function ManufacturingApp({
               <span className="breadcrumb">{selected?.title ?? "My work"}</span>
             </div>
             <div className="topbar-right">
-              {demo && <span className="demo-badge">SAMPLE WORKSPACE</span>}
               <span className={"sync-status " + (!online ? "offline" : "")}>
                 {!online && <WifiOff size={15} />}
                 <span>

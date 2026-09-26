@@ -8,7 +8,7 @@ const jwt = (role: string, ref = "bbbgrxvidrlmrrezfmil") =>
   "eyJhbGciOiJIUzI1NiJ9." + Buffer.from(JSON.stringify({role, ref})).toString("base64url") + ".test";
 
 describe("deployment configuration boundary", () => {
-  it("fails missing production configuration but allows unconfigured local demo", () => {
+  it("fails missing production configuration but allows an unconfigured local development server", () => {
     expect(() => publicConfiguration({})).toThrow("Set NEXT_PUBLIC");
     expect(publicConfiguration({}, false)).toEqual({url: "", key: ""});
   });

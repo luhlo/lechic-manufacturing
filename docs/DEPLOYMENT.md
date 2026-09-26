@@ -54,7 +54,7 @@ Former Sites/Worker tool variables (`SITES_*`, `WRANGLER_*`, `MINIFLARE_*`, `CLO
 2. In Cloudflare, open **Workers & Pages → Create application → Pages → Connect to Git** (the dashboard may label this “Import an existing Git repository”). Authorize access to the manufacturing repository only and select it. Use the settings above and add the two public Production variables.
 3. Disable automatic branch previews for now. Save and deploy. A successful build should show tests passing and publish `dist/`; no server/Worker entry point or bindings are needed.
 4. Copy the **actual stable production HTTPS origin** shown by Cloudflare. Do not use a per-commit preview URL. No hostname in this document is an assigned Pages URL.
-5. Update Supabase Auth URLs as below. Then open the Pages URL on the phone and computer, create the owner's password using **First time here?**, confirm the email, and sign in. The preauthorized administrator is `lechicmiami@gmail.com`.
+5. Update Supabase Auth URLs as below. Then open the Pages URL on the phone and computer, set the owner’s password through Supabase’s administrator-only **Create new user** form, then sign in. Public registration is disabled; see `docs/LOGIN.md`. The preauthorized administrator is `lechicmiami@gmail.com`.
 6. Complete the real-device and Auth checks below before using live manufacturing sessions. Subsequent pushes to `main` rebuild the same Pages project.
 
 Do not create a Direct Upload project as a shortcut if GitHub automatic builds are desired; create the Git-connected Pages project at the outset. [Cloudflare Git integration](https://developers.cloudflare.com/pages/get-started/git-integration/).

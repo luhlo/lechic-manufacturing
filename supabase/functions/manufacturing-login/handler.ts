@@ -280,6 +280,7 @@ export function createLoginHandler(
           "devices",
           "approve_device",
           "revoke_device",
+          "create_account",
         ].includes(action)
       )
         throw new LoginError(400, "Invalid request.");
@@ -313,6 +314,93 @@ export function createLoginHandler(
           "Sign out and sign in with your password to manage login settings.",
         );
       const actor = verified.data.id;
+      if (action === "create_account") {
+        if (
+          typeof body.profile_id !== "string" ||
+          !/^[0-9a-f-]{36}$/i.test(body.profile_id)
+        )
+          throw new LoginError(400, "Choose an employee.");
+        if (
+          typeof body.password !== "string" ||
+          body.password.length < 10 ||
+          new TextEncoder().encode(body.password).length > 72
+        )
+          throw new LoginError(
+            400,
+            "Use a password with at least 10 characters and at most 72 UTF-8 bytes.",
+          );
+        // Use the validated user's JWT for these reads so existing database RLS and
+        // active-role checks remain authoritative. Never accept permissions or email
+        // from the browser, and never return the employee's session to the manager.
+        const context = await call("/rest/v1/rpc/app_context", {}, token);
+        if (
+          !context.ok ||
+          context.data.profile?.auth_user_id !== actor ||
+          !Array.isArray(context.data.permissions) ||
+          !context.data.permissions.includes("*")
+        )
+          throw new LoginError(
+            403,
+            "Only an administrator can create accounts.",
+          );
+        const path =
+          "/rest/v1/profiles?id=eq." +
+          encodeURIComponent(body.profile_id) +
+          "&select=id,email,active,auth_user_id";
+        const record = await call(path, null, token, "GET");
+        const profile =
+          Array.isArray(record.data) && record.data.length === 1
+            ? record.data[0]
+            : null;
+        if (
+          !record.ok ||
+          profile?.id !== body.profile_id ||
+          !profile.active ||
+          !profile.email
+        )
+          throw new LoginError(
+            400,
+            "Choose an active employee with an email address.",
+          );
+        if (profile.auth_user_id)
+          throw new LoginError(
+            409,
+            "This employee already has an account. Refresh login options.",
+          );
+        const created = await call("/auth/v1/admin/users", {
+          email: profile.email,
+          password: body.password,
+          email_confirm: true,
+        });
+        if (!created.ok) {
+          if (
+            created.data.code === "email_exists" ||
+            created.data.error_code === "email_exists"
+          )
+            throw new LoginError(
+              409,
+              "An account already exists for this email. Refresh login options.",
+            );
+          throw new LoginError(
+            400,
+            "Could not create the account. Check the password and employee email, then refresh before retrying.",
+          );
+        }
+        // The existing Auth trigger links only an active preauthorized profile.
+        // On an uncertain response, preserve any created account instead of deleting
+        // or overwriting it; a retry detects the existing link and cannot reset it.
+        const linked = await call(path, null, token, "GET");
+        if (
+          !created.data.id ||
+          !linked.ok ||
+          linked.data?.[0]?.auth_user_id !== created.data.id
+        )
+          throw new LoginError(
+            503,
+            "The account may have been created. Refresh login options before trying again.",
+          );
+        return respond({ ok: true });
+      }
       if (action === "credentials" || action === "credential_status") {
         if (
           typeof body.profile_id !== "string" ||
@@ -349,7 +437,7 @@ export function createLoginHandler(
           if (!status.user_id)
             throw new LoginError(
               400,
-              "The employee must finish creating their account first.",
+              "An administrator must create this employee’s account first.",
             );
           const user = await existingUser(status.user_id);
           if (

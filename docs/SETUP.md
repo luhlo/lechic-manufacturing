@@ -7,20 +7,21 @@ Supabase organization **le chic** owns **Le Chic Manufacturing**, project `bbbgr
 - `20260926003308_manufacturing_core.sql`
 - `20260926005814_qa_stabilization.sql`
 - `20260926011457_advisor_indexes.sql`
+- `20260926033822_username_and_device_pin_login.sql`
 
-`supabase/bootstrap-admin.sql` reserved **lechicmiami@gmail.com**, display name **Le Chic Miami**, with the Administrator role. No owner password was created and no email was sent. Local `.env.local` and the Site runtime have the project URL and modern publishable key. No service-role key is used. Temporary QA users and all QA manufacturing/catalog rows were removed; employee KPI visibility is OFF.
+`supabase/bootstrap-admin.sql` reserved **lechicmiami@gmail.com**, display name **Le Chic Miami**, with the Administrator role. No owner password was created and no email was sent. Local `.env.local` and the Site runtime have the project URL and modern publishable key. The frontend uses no service-role key; the protected login Edge Function uses Supabase’s built-in server key. Temporary QA users and all QA manufacturing/catalog rows were removed; employee KPI visibility is OFF.
 
 For the current static GitHub Pages deployment, follow [GITHUB-PAGES.md](GITHUB-PAGES.md), including the public build variables, actual production URL and origin-transition instructions. The older private Site is a review deployment.
 
 ## Remaining launch configuration
 
-1. In Supabase Auth, set the Site URL and allowed confirmation/reset redirect URLs to the final deployment origin. Keep email confirmation enabled. Configure production SMTP for employee confirmation and password reset delivery. These account-level Auth settings and email delivery were not modified/tested by this audit.
-2. Open the app, choose **First time here?**, use **lechicmiami@gmail.com**, and choose your own password. Confirm your email and sign in. If Supabase's default mail service restricts recipients, finish SMTP configuration first.
+1. The current Site URL is **https://lcwork.luhlo.com/** and both its exact redirect and the prior GitHub Pages redirect are authorized. Public signups and anonymous sign-ins are disabled. Keep email confirmation enabled; administrator-created accounts are individually auto-confirmed. Configure SMTP for password reset delivery.
+2. For the first administrator, the owner opens Supabase **Authentication → Users → Add user → Create new user**, enters **lechicmiami@gmail.com** and their own password, leaves **Auto confirm user** checked, and submits. No email is sent. Sign in at **https://lcwork.luhlo.com/**. Subsequent employee accounts are created by an administrator under **Employees → Login options → Create employee account**. See [LOGIN.md](LOGIN.md).
 3. Create your actual positions, activities and their position links, designs, and employee records. Assign capabilities through Permissions and create work assignments.
 4. Deploy the static app to the independent GitHub Pages repository. The previous Sites review deployment remains owner-private; the GitHub Pages shell is reachable at its new URL, with Supabase sign-in/RLS protecting production data.
 5. Verify installation, actual screen lock and app switching on one iPhone/Safari and one Android/Chrome. Desktop Chrome suspension and PWA tests passed, but those do not certify mobile OS behavior.
 
-For a fresh independent environment, apply all files in `supabase/migrations/` in order and then the bootstrap SQL. Never point the app at Relay or Commissions. `.env.example` lists the two public variables. Existing migration timestamps in the hosted ledger may differ because the management API assigns deployment timestamps; names and SQL identify the same three checked migrations.
+For a fresh independent environment, apply all files in `supabase/migrations/` in order and then the bootstrap SQL. Never point the app at Relay or Commissions. `.env.example` lists the two public variables. Existing migration timestamps in the hosted ledger may differ because the management API assigns deployment timestamps; names and SQL identify the same checked migrations.
 
 ## Supabase configuration
 

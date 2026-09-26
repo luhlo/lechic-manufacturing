@@ -25,10 +25,12 @@ export function EmployeeLoginSettings({
   client,
   profile,
   refresh,
+  canCreateAccount,
 }: {
   client: SupabaseClient;
   profile: Row;
   refresh: () => Promise<void>;
+  canCreateAccount: boolean;
 }) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
@@ -37,6 +39,9 @@ export function EmployeeLoginSettings({
     [username, setUsername] = useState(""),
     [pin, setPin] = useState(""),
     [disable, setDisable] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [notice, setNotice] = useState("");
   const load = async () => {
     setOpen(true);
     setBusy(true);
@@ -44,6 +49,9 @@ export function EmployeeLoginSettings({
     setStatus(null);
     setPin("");
     setDisable(false);
+    setNewPassword("");
+    setConfirmPassword("");
+    setNotice("");
     try {
       const v = await loginRequest<CredentialStatus>(client, {
         action: "credential_status",
@@ -72,6 +80,8 @@ export function EmployeeLoginSettings({
           if (!busy) {
             setOpen(v);
             setPin("");
+            setNewPassword("");
+            setConfirmPassword("");
           }
         }}
       >
@@ -79,11 +89,94 @@ export function EmployeeLoginSettings({
           <DialogHeader>
             <DialogTitle>Login options: {profile.name}</DialogTitle>
             <DialogDescription>
-              Manage this employee’s username and PIN. PINs work on approved
-              studio devices.
+              Manage this employee’s account, username and PIN. PINs work on
+              approved studio devices.
             </DialogDescription>
           </DialogHeader>
           {busy && !status && <p>Loading…</p>}
+          {status && !status.account_ready && canCreateAccount && (
+            <form
+              className="form-stack"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (busy) return;
+                setError("");
+                setNotice("");
+                if (newPassword !== confirmPassword) {
+                  setError("The passwords do not match.");
+                  return;
+                }
+                setBusy(true);
+                try {
+                  await loginRequest(client, {
+                    action: "create_account",
+                    profile_id: profile.id,
+                    password: newPassword,
+                  });
+                  setStatus(
+                    await loginRequest<CredentialStatus>(client, {
+                      action: "credential_status",
+                      profile_id: profile.id,
+                    }),
+                  );
+                  await refresh();
+                  setNotice(
+                    "Account created. The employee can sign in with their email and password. You can assign a username and PIN below.",
+                  );
+                } catch (e) {
+                  setError(message(e));
+                } finally {
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setBusy(false);
+                }
+              }}
+            >
+              <h3>Create login account</h3>
+              <p className="muted">
+                Email: {String(profile.email)}. No invitation email will be
+                sent. Share the credentials with the employee directly.
+              </p>
+              <label className="field">
+                Initial password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={10}
+                  maxLength={72}
+                  disabled={busy}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                Confirm initial password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={10}
+                  maxLength={72}
+                  disabled={busy}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </label>
+              <p className="muted tiny">
+                Use at least 10 characters. Creating the account does not sign
+                you out.
+              </p>
+              <button className="button primary" disabled={busy}>
+                {busy ? "Creating…" : "Create employee account"}
+              </button>
+            </form>
+          )}
+          {notice && (
+            <p className="notice" role="status">
+              {notice}
+            </p>
+          )}
           {status && (
             <form
               className="form-stack"
@@ -147,8 +240,8 @@ export function EmployeeLoginSettings({
               </label>
               {!status.account_ready && (
                 <p className="notice">
-                  The employee must create and confirm their account before a
-                  PIN can be assigned.
+                  An administrator must create this employee’s login account
+                  before a PIN can be assigned.
                 </p>
               )}
               {status.pin_enabled && (

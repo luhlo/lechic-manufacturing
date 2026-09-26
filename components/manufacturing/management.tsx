@@ -180,6 +180,7 @@ export function Management({
                     client={api.client}
                     profile={r}
                     refresh={refresh}
+                    canCreateAccount={allowed(state.context.permissions, "*")}
                   />
                 )}
               </div>,
@@ -491,8 +492,9 @@ export function Management({
                     false,
                   )}
                   <p className="muted tiny">
-                    After saving, have the employee choose “First time here?” on
-                    the sign-in screen. Manage their roles in Permissions.
+                    After saving, an administrator can open Login options to
+                    create the employee’s account and assign a username and PIN.
+                    Manage their roles in Permissions.
                   </p>
                 </>
               )}

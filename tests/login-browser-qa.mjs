@@ -152,13 +152,24 @@ try {
     path: "../../work/deployment/username-login-mobile.png",
     fullPage: true,
   });
+  assert.equal(
+    await page
+      .getByRole("button", { name: "First time here?", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: /Explore with sample data/ })
+      .count(),
+    0,
+  );
   await page
-    .getByRole("button", { name: "First time here?", exact: true })
-    .click();
-  await page.getByLabel("Email", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "Back to sign in", exact: true })
-    .click();
+    .getByText(
+      "Accounts are created by an administrator. Public registration is not available.",
+      { exact: true },
+    )
+    .waitFor();
   await page
     .getByRole("button", { name: "Forgot password?", exact: true })
     .click();
@@ -167,11 +178,11 @@ try {
   assert.equal(
     requests.length,
     3,
-    "checking signup/reset screens does not send email",
+    "checking the reset screen does not send email",
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: email/username routing, unapproved-device guidance, four-digit automatic PIN submission, secret clearing, mobile layout and existing signup/reset screens; all external requests mocked.",
+    "PASS: email/username routing, unapproved-device guidance, four-digit automatic PIN submission, secret clearing, mobile layout reset screen, and no public registration or sample entry; all external requests mocked.",
   );
 } finally {
   await browser.close();

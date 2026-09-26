@@ -4,7 +4,7 @@ An independent manufacturing activity, time and productivity PWA for Le Chic Mia
 
 **Live app:** [Le Chic Manufacturing](https://lcwork.luhlo.com/).
 
-**Connected to the independent Supabase project `bbbgrxvidrlmrrezfmil` (Le Chic Manufacturing), in organization “le chic”.** The QA stabilization pass applied three migrations, verified live PostgreSQL/RLS and real Supabase password sign-in, and exercised the browser workflows. All temporary test accounts and manufacturing records were removed. The administrator email `lechicmiami@gmail.com` is reserved; the owner still creates their own password. See `docs/AUDIT.md` for evidence and launch requirements. Relay and Commissions were not modified.
+**Connected to the independent Supabase project `bbbgrxvidrlmrrezfmil` (Le Chic Manufacturing), in organization “le chic”.** The QA stabilization pass applied three migrations, verified live PostgreSQL/RLS and real Supabase password sign-in, and exercised the browser workflows. All temporary test accounts and manufacturing records were removed. The administrator email `lechicmiami@gmail.com` is reserved; the owner sets the first administrator password through Supabase’s Create user form; subsequent accounts are created inside Employees → Login options. See `docs/AUDIT.md` for evidence and launch requirements. Relay and Commissions were not modified.
 
 ## Deploy to GitHub Pages
 
@@ -27,11 +27,11 @@ Before switching from the existing review Site to the new GitHub URL, wait for *
 
 - Mobile employee workflow: position-specific activity tiles, current assignments first, forgiving design/SKU search, Work / Walking / Interruption controls, Finish then quantity.
 - Timestamp-based sessions and individually persisted segments; one active session per employee, atomic transitions, idempotency keys, revision conflict checks, IndexedDB recovery and ordered offline replay.
-- Supabase email-or-username/password sign-in and automatic four-digit PIN sign-in on approved studio browsers; persisted sessions, preauthorized employee enrollment, password recovery, configurable roles, employee/position role grants, RLS and backend authorization.
+- Supabase email-or-username/password sign-in and automatic four-digit PIN sign-in on approved studio browsers; persisted sessions, administrator-created accounts (public signup is disabled), password recovery, configurable roles, employee/position role grants, RLS and backend authorization.
 - Management screens for employees, positions, roles/capabilities, activities, designs, assignments, versioned KPIs, settings and analytics.
 - KPI hierarchy: activity + design, then activity. Employee visibility defaults to OFF, with TARGET_ONLY and TARGET_AND_ACTUAL modes. Historical target snapshots are retained privately.
 - Analytics: productive/walking/interruption/elapsed time, units, weighted production rates, walking event counts and averages, date/employee/position/activity/design/SKU filters, drill-down and historical baseline comparisons.
-- PWA manifest, local icons, production service worker, responsive layouts, and an isolated sample workspace.
+- PWA manifest, local icons, production service worker, responsive layouts and an authenticated workspace. The public sample-data entry has been removed.
 
 ## Files to know
 
@@ -42,7 +42,7 @@ Before switching from the existing review Site to the new GitHub URL, wait for *
 - `components/manufacturing/analytics.tsx`: filters, summaries and comparisons.
 - `lib/manufacturing/domain.ts`: pure time, search and KPI calculations.
 - `lib/manufacturing/api.ts`: Supabase access, IndexedDB and offline command replay.
-- `lib/manufacturing/demo.ts`: sample data only; never used for production records.
+- `lib/manufacturing/demo.ts`: local test fixtures only; excluded from the production app.
 - `app/globals.css`: colors, spacing, controls and responsive layout.
 - `supabase/migrations/`: database structure, authorization and session operations.
 - `docs/SETUP.md`: required cloud setup, environment variables, administrator and rollout.

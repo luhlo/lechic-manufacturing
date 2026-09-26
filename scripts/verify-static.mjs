@@ -21,6 +21,8 @@ assert.ok(!sw.includes("skipWaiting"), "Updates must not interrupt an open sessi
 for (const file of readdirSync(root + "/assets")) {
   if (!file.endsWith(".js")) continue;
   const body = readFileSync(root + "/assets/" + file, "utf8");
+  for (const removed of ["Explore with sample data", "manufacturing-demo-mode", "SAMPLE WORKSPACE", "First time here?"])
+    assert.ok(!body.includes(removed), `Removed public entry point in production bundle: ${removed}`);
   assert.ok(!/sb_secret_[A-Za-z0-9_-]{20,}/.test(body), "A secret key entered the bundle");
   assert.ok(!body.includes("process.env.NEXT_PUBLIC_"), "Public environment variables were not substituted");
   for (const [token] of body.matchAll(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g)) {

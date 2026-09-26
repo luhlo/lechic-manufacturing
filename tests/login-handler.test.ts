@@ -387,3 +387,165 @@ test("rejects disallowed origins and oversized streamed bodies before any backen
   expect(large.status).toBe(413);
   expect(calls).toHaveLength(0);
 });
+
+describe("administrator-created accounts", () => {
+  const body = {
+    action: "create_account",
+    profile_id: userId,
+    password: "local fixture password",
+  };
+  function accountFixture(override?: Override) {
+    let created = false;
+    return fixture((call) => {
+      const changed = override?.(call);
+      if (changed) return changed;
+      if (call.path === "/rest/v1/rpc/app_context")
+        return response({
+          profile: { auth_user_id: actorId },
+          permissions: ["*"],
+        });
+      if (call.path.startsWith("/rest/v1/profiles?"))
+        return response([
+          {
+            id: userId,
+            email: "employee@example.invalid",
+            active: true,
+            auth_user_id: created ? userId : null,
+          },
+        ]);
+      if (call.path === "/auth/v1/admin/users") {
+        created = true;
+        return response({ id: userId });
+      }
+    });
+  }
+  test("creates only the saved employee account, keeps administrator identity, and sends no email", async () => {
+    const { handler, calls } = accountFixture();
+    const result = await handler(
+      request(
+        {
+          ...body,
+          email: "spoofed@example.invalid",
+          actor: userId,
+          permissions: ["*"],
+        },
+        token(),
+      ),
+    );
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ ok: true });
+    const creation = calls.filter((c) => c.path === "/auth/v1/admin/users");
+    expect(creation).toHaveLength(1);
+    expect(creation[0].body).toEqual({
+      email: "employee@example.invalid",
+      password: body.password,
+      email_confirm: true,
+    });
+    expect(creation[0].headers.get("authorization")).toBe(
+      "Bearer " + config.serviceKey,
+    );
+    for (const c of calls.filter((c) => c.path.startsWith("/rest/")))
+      expect(c.headers.get("authorization")).toBe("Bearer " + token());
+    expect(
+      calls.some((c) =>
+        /invite|signup|recover|generate_link|token\?/.test(c.path),
+      ),
+    ).toBe(false);
+  });
+  test.each([
+    { permissions: [] },
+    { permissions: ["employees.manage"] },
+    { permissions: ["permissions.manage"] },
+  ])(
+    "denies roles without full administration: $permissions",
+    async ({ permissions }) => {
+      const { handler, calls } = accountFixture((c) =>
+        c.path.endsWith("/app_context")
+          ? response({ profile: { auth_user_id: actorId }, permissions })
+          : undefined,
+      );
+      expect((await handler(request(body, token()))).status).toBe(403);
+      expect(calls.some((c) => c.path === "/auth/v1/admin/users")).toBe(false);
+    },
+  );
+  test.each(["otp", "recovery"])(
+    "denies account creation from %s-only sessions",
+    async (method) => {
+      const { handler, calls } = accountFixture();
+      expect((await handler(request(body, token(method)))).status).toBe(403);
+      expect(calls).toHaveLength(1);
+    },
+  );
+  test("rejects anonymous requests and forged administrator identity", async () => {
+    const anonymous = accountFixture((c) =>
+      c.path === "/auth/v1/user" ? response({}, 401) : undefined,
+    );
+    expect((await anonymous.handler(request(body))).status).toBe(401);
+    const mismatch = accountFixture((c) =>
+      c.path.endsWith("/app_context")
+        ? response({ profile: { auth_user_id: userId }, permissions: ["*"] })
+        : undefined,
+    );
+    expect((await mismatch.handler(request(body, token()))).status).toBe(403);
+  });
+  test.each([
+    {
+      profile: { id: userId, active: false, email: "employee@example.invalid" },
+      status: 400,
+    },
+    {
+      profile: {
+        id: userId,
+        active: true,
+        email: "employee@example.invalid",
+        auth_user_id: userId,
+      },
+      status: 409,
+    },
+    {
+      profile: { id: actorId, active: true, email: "employee@example.invalid" },
+      status: 400,
+    },
+  ])(
+    "does not create or overwrite an ineligible account: $status",
+    async ({ profile, status }) => {
+      const { handler, calls } = accountFixture((c) =>
+        c.path.startsWith("/rest/v1/profiles?")
+          ? response([profile])
+          : undefined,
+      );
+      expect((await handler(request(body, token()))).status).toBe(status);
+      expect(calls.some((c) => c.path === "/auth/v1/admin/users")).toBe(false);
+    },
+  );
+  test("a repeated request cannot reset the employee's password", async () => {
+    const { handler, calls } = accountFixture();
+    expect((await handler(request(body, token()))).status).toBe(200);
+    expect((await handler(request(body, token()))).status).toBe(409);
+    expect(calls.filter((c) => c.path === "/auth/v1/admin/users")).toHaveLength(
+      1,
+    );
+  });
+  test("leaves a possibly created account intact after uncertain linking", async () => {
+    const { handler, calls } = accountFixture((c) =>
+      c.path === "/auth/v1/admin/users"
+        ? response({ id: "unexpected-user" })
+        : undefined,
+    );
+    expect((await handler(request(body, token()))).status).toBe(503);
+    expect(calls.at(-1)?.path).toContain("/rest/v1/profiles?");
+    expect(calls.filter((c) => c.path.includes("/admin/users"))).toHaveLength(
+      1,
+    );
+  });
+  test.each(["short", "x".repeat(73), "🔒".repeat(20)])(
+    "rejects an invalid password length without account creation",
+    async (password) => {
+      const { handler, calls } = accountFixture();
+      expect(
+        (await handler(request({ ...body, password }, token()))).status,
+      ).toBe(400);
+      expect(calls.some((c) => c.path === "/auth/v1/admin/users")).toBe(false);
+    },
+  );
+});
