@@ -34,12 +34,13 @@ import {
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Api, SessionStore, clientFor, message } from "@/lib/manufacturing/api";
-import { pageFromPath, pathForPage, appHome } from "@/lib/manufacturing/routes";
+import { pageFromPath, pathForPage } from "@/lib/manufacturing/routes";
 import { DemoApi, demoUid } from "@/lib/manufacturing/demo";
 import { allowed, type CachedState } from "@/lib/manufacturing/types";
 import { Employee } from "./employee";
 import { Management } from "./management";
 import { Analytics } from "./analytics";
+import { Auth } from "./login-form";
 import type { SupabaseClient } from "@supabase/supabase-js";
 const navigation = [
   { id: "work", title: "My work", icon: Timer, permission: "" },
@@ -541,146 +542,6 @@ function Brand() {
         le chic<span>MIAMI</span>
       </div>
     </div>
-  );
-}
-function Auth({
-  client,
-  error,
-}: {
-  client: SupabaseClient | null;
-  error: string;
-}) {
-  const [mode, setMode] = useState<"login" | "signup" | "reset">("login"),
-    [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState("");
-  return (
-    <>
-      <p className="eyebrow">YOUR WORKSPACE</p>
-      <h2>
-        {mode === "login"
-          ? "Welcome back."
-          : mode === "signup"
-            ? "Create your account."
-            : "Reset your password."}
-      </h2>
-      <p className="muted">
-        {mode === "signup"
-          ? "Use the email your manager added."
-          : mode === "reset"
-            ? "We’ll send a password reset link."
-            : "Sign in to record your work."}
-      </p>
-      {!client && (
-        <div className="notice">
-          The independent database connection is being configured. You can
-          explore the sample workspace below.
-        </div>
-      )}
-      {error && (
-        <div role="alert" className="notice error">
-          {error}
-        </div>
-      )}
-      <form
-        className="form-stack"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!client) return;
-          setBusy(true);
-          setNotice("");
-          try {
-            if (mode === "reset") {
-              const r = await client.auth.resetPasswordForEmail(email, {
-                redirectTo: appHome(location.origin),
-              });
-              if (r.error) throw r.error;
-              setNotice("Check your email for the reset link.");
-            } else if (mode === "signup") {
-              const r = await client.auth.signUp({
-                email,
-                password,
-                options: { emailRedirectTo: appHome(location.origin) },
-              });
-              if (r.error) throw r.error;
-              setNotice(
-                "Check your email to confirm your account, then sign in.",
-              );
-            } else {
-              const r = await client.auth.signInWithPassword({
-                email,
-                password,
-              });
-              if (r.error) throw r.error;
-            }
-          } catch (e) {
-            setNotice(message(e));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label className="field">
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        {mode !== "reset" && (
-          <label className="field">
-            Password
-            <input
-              type="password"
-              required
-              minLength={mode === "signup" ? 10 : 1}
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-        )}
-        <button className="button primary" disabled={busy || !client}>
-          {busy
-            ? "Please wait…"
-            : mode === "login"
-              ? "Sign in"
-              : mode === "signup"
-                ? "Create account"
-                : "Send reset link"}
-          <ArrowRight size={18} />
-        </button>
-        {notice && (
-          <p role="status" className="notice">
-            {notice}
-          </p>
-        )}
-      </form>
-      <div className="auth-links">
-        <button
-          onClick={() => {
-            setMode(mode === "signup" ? "login" : "signup");
-            setNotice("");
-          }}
-        >
-          {mode === "signup" ? "Back to sign in" : "First time here?"}
-        </button>
-        <button
-          onClick={() => {
-            setMode(mode === "reset" ? "login" : "reset");
-            setNotice("");
-          }}
-        >
-          {mode === "reset" ? "Back to sign in" : "Forgot password?"}
-        </button>
-      </div>
-    </>
   );
 }
 function PasswordRecovery({

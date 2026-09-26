@@ -12,6 +12,7 @@ export interface Profile extends Row {
   name: string;
   auth_user_id: string | null;
   email: string;
+  username?: string | null;
   position_id: string | null;
   active: boolean;
 }

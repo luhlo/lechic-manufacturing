@@ -20,6 +20,7 @@ import {
 } from "@/lib/manufacturing/types";
 import { localDate, normalize } from "@/lib/manufacturing/domain";
 import { Check, DataTable, Pick } from "./primitives";
+import { EmployeeLoginSettings, PinDevices } from "./login-settings";
 const titles: Record<string, string> = {
   profiles: "Employees",
   positions: "Positions",
@@ -158,13 +159,30 @@ export function Management({
       case "profiles":
         return (
           <DataTable
-            headers={["Employee", "Email", "Position", "Status", ""]}
+            headers={[
+              "Employee",
+              "Email",
+              "Username",
+              "Position",
+              "Status",
+              "",
+            ]}
             rows={filtered.map((r) => [
               <strong key="name">{r.name}</strong>,
               String(r.email),
+              String(r.username ?? "—"),
               find(c.positions, r.position_id),
               status(r),
-              action(r),
+              <div className="login-actions" key="actions">
+                {action(r)}
+                {api.client && (
+                  <EmployeeLoginSettings
+                    client={api.client}
+                    profile={r}
+                    refresh={refresh}
+                  />
+                )}
+              </div>,
             ])}
           />
         );
@@ -298,6 +316,10 @@ export function Management({
             }}
           />
         </div>
+        {api.client &&
+          allowed(state.context.permissions, "permissions.manage") && (
+            <PinDevices client={api.client} />
+          )}
         <div className="settings-card">
           <h2>Install on a phone</h2>
           <p>

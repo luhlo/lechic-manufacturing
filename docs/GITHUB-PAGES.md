@@ -1,14 +1,16 @@
 # GitHub Pages deployment
 
-The current deployment target is **GitHub Pages**, following the owner's request to replace the earlier Cloudflare hosting plan. Supabase remains the existing backend (`bbbgrxvidrlmrrezfmil`). No manufacturing data, database schema, permissions or session engine was changed.
+The current deployment target is **GitHub Pages** at **https://lcwork.luhlo.com/**. Supabase remains the existing backend (`bbbgrxvidrlmrrezfmil`). Manufacturing data and the session engine are preserved. The separate username/PIN feature is documented in [LOGIN.md](LOGIN.md).
 
 ## Published status — 2026-09-26 UTC
 
-- Live app: [https://luhlo.github.io/lechic-manufacturing/](https://luhlo.github.io/lechic-manufacturing/).
+- Live app: [https://lcwork.luhlo.com/](https://lcwork.luhlo.com/).
+- Pages custom domain is `lcwork.luhlo.com`, DNS check succeeded, certificate issuance completed, and **Enforce HTTPS** is enabled. Namecheap already had the correct `lcwork` CNAME pointing to `luhlo.github.io`, with Automatic TTL; no DNS record changes were necessary.
+- [Custom-domain rebuild 36215312364](https://github.com/luhlo/lechic-manufacturing/actions/runs/36215312364) succeeded with the root base path. The workflow continues to derive the base from Pages.
 - [GitHub Actions run 36213898399](https://github.com/luhlo/lechic-manufacturing/actions/runs/36213898399) succeeded: clean installation, all 46 tests, TypeScript, lint, static build, artifact upload and Pages deployment.
 - GitHub's npm 11.17 exposed two missing optional lockfile entries. Regenerating the lockfile in a clean directory added them without changing existing dependency versions; the subsequent clean installation and deployment passed.
 - Live HTTPS checks passed for the home, login, work, dashboard, employees, activities, assignments, KPIs and analytics routes, plus JavaScript, CSS, manifest, icons and service worker. The sample dashboard and employee screen loaded in the browser, including direct-route refresh.
-- Supabase's Site URL and exact allowed redirect are both `https://luhlo.github.io/lechic-manufacturing/`, verified after reloading the correct project's URL Configuration page. There were no preexisting allowed redirects to remove.
+- Supabase's Site URL and exact allowed redirect are both `https://lcwork.luhlo.com/`. The existing allowed `https://luhlo.github.io/lechic-manufacturing/` redirect is preserved (two allowed URLs total).
 - Real account confirmation/reset email delivery and installation on physical iPhone/Android devices remain unverified. Publishing and sample checks did not create production accounts or manufacturing records.
 
 ## Configuration
@@ -42,7 +44,7 @@ In the existing project's **Authentication → URL Configuration**:
 - **Redirect URLs:** the same complete app home URL with a trailing slash. The app sends exactly this URL for signup confirmation and password reset.
 - Retain prior authorized review/local URLs while still in use. Do not add broad wildcards for other GitHub projects.
 
-For a later custom domain, let the workflow derive the new base and update these Auth URLs to the actual new app home. Production SMTP and real confirmation/reset email delivery must also work. No production hostname should be reported as live before deployment succeeds. [Supabase redirect configuration](https://supabase.com/docs/guides/auth/redirect-urls).
+For any future domain change, let the workflow derive the base and update these Auth URLs to the new app home. Production SMTP and real confirmation/reset email delivery must also work. [Supabase redirect configuration](https://supabase.com/docs/guides/auth/redirect-urls).
 
 ## Session and PWA safety
 
