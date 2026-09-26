@@ -2,6 +2,8 @@
 
 An independent manufacturing activity, time and productivity PWA for Le Chic Miami.
 
+**Live app:** [Le Chic Manufacturing](https://luhlo.github.io/lechic-manufacturing/).
+
 **Connected to the independent Supabase project `bbbgrxvidrlmrrezfmil` (Le Chic Manufacturing), in organization “le chic”.** The QA stabilization pass applied three migrations, verified live PostgreSQL/RLS and real Supabase password sign-in, and exercised the browser workflows. All temporary test accounts and manufacturing records were removed. The administrator email `lechicmiami@gmail.com` is reserved; the owner still creates their own password. See `docs/AUDIT.md` for evidence and launch requirements. Relay and Commissions were not modified.
 
 ## Deploy to GitHub Pages
@@ -10,7 +12,7 @@ The frontend is a **static React + TypeScript + Vite PWA**, with Supabase as its
 
 The workflow derives the repository base path, runs `npm ci` and `npm run verify`, and publishes **`dist`**. Physical route directories allow direct links and refresh on GitHub Pages. PWA icons, caches, installation scope and Auth callbacks use the same base.
 
-See [GitHub Pages setup, status and verification](docs/GITHUB-PAGES.md). Source repository: [luhlo/lechic-manufacturing](https://github.com/luhlo/lechic-manufacturing). The publishing workflow reports the current deployment URL and status. The earlier Cloudflare setup is retained as historical documentation.
+See [GitHub Pages setup, status and verification](docs/GITHUB-PAGES.md). Source repository: [luhlo/lechic-manufacturing](https://github.com/luhlo/lechic-manufacturing). Pages, the public build variables, and Supabase's production Site URL and redirect URL are configured. [The first successful deployment](https://github.com/luhlo/lechic-manufacturing/actions/runs/36213898399) passed all 46 tests, TypeScript, lint and the production build. The earlier Cloudflare setup is retained as historical documentation.
 
 ```sh
 npm ci

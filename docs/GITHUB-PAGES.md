@@ -2,6 +2,15 @@
 
 The current deployment target is **GitHub Pages**, following the owner's request to replace the earlier Cloudflare hosting plan. Supabase remains the existing backend (`bbbgrxvidrlmrrezfmil`). No manufacturing data, database schema, permissions or session engine was changed.
 
+## Published status — 2026-09-26 UTC
+
+- Live app: [https://luhlo.github.io/lechic-manufacturing/](https://luhlo.github.io/lechic-manufacturing/).
+- [GitHub Actions run 36213898399](https://github.com/luhlo/lechic-manufacturing/actions/runs/36213898399) succeeded: clean installation, all 46 tests, TypeScript, lint, static build, artifact upload and Pages deployment.
+- GitHub's npm 11.17 exposed two missing optional lockfile entries. Regenerating the lockfile in a clean directory added them without changing existing dependency versions; the subsequent clean installation and deployment passed.
+- Live HTTPS checks passed for the home, login, work, dashboard, employees, activities, assignments, KPIs and analytics routes, plus JavaScript, CSS, manifest, icons and service worker. The sample dashboard and employee screen loaded in the browser, including direct-route refresh.
+- Supabase's Site URL and exact allowed redirect are both `https://luhlo.github.io/lechic-manufacturing/`, verified after reloading the correct project's URL Configuration page. There were no preexisting allowed redirects to remove.
+- Real account confirmation/reset email delivery and installation on physical iPhone/Android devices remain unverified. Publishing and sample checks did not create production accounts or manufacturing records.
+
 ## Configuration
 
 - Source branch: `main`.
@@ -54,7 +63,7 @@ Before moving from the old Site to the GitHub URL, wait for **Synced** on the ol
 - No uncaught browser errors or external API requests occurred. The browser test used the existing isolated sample workspace and did not modify live Supabase data.
 - The build retains the non-blocking ~688 kB JavaScript chunk-size warning; no UI redesign/code-splitting project was added.
 
-Real GitHub Actions deployment, final-host headers, real account confirmation/reset delivery and iPhone/Android installation must be checked after publication. `docs/DEPLOYMENT.md` and `docs/DEPLOYMENT-VALIDATION.md` record the earlier Cloudflare preparation, not the current hosting destination.
+The published checks above supplement these local checks. Real account confirmation/reset delivery and iPhone/Android installation remain launch checks. `docs/DEPLOYMENT.md` and `docs/DEPLOYMENT-VALIDATION.md` record the earlier Cloudflare preparation, not the current hosting destination.
 
 ## Reproduce the repository-path test
 
