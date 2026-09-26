@@ -34,68 +34,65 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Api, SessionStore, clientFor, message } from "@/lib/manufacturing/api";
 import { pageFromPath, pathForPage } from "@/lib/manufacturing/routes";
-import { allowed, type CachedState } from "@/lib/manufacturing/types";
+import {
+  allowed,
+  canViewPage,
+  firstPage,
+  type CachedState,
+} from "@/lib/manufacturing/types";
 import { Employee } from "./employee";
 import { Management } from "./management";
 import { Analytics } from "./analytics";
+import { Dashboard } from "./dashboard";
 import { Auth } from "./login-form";
 import type { SupabaseClient } from "@supabase/supabase-js";
 const navigation = [
-  { id: "work", title: "My work", icon: Timer, permission: "" },
+  { id: "work", title: "My work", icon: Timer },
   {
     id: "dashboard",
     title: "Dashboard",
     icon: LayoutDashboard,
-    permission: "analytics.view",
   },
   {
     id: "profiles",
     title: "Employees",
     icon: Users,
-    permission: "employees.manage",
   },
   {
     id: "positions",
     title: "Positions",
     icon: Briefcase,
-    permission: "positions.manage",
   },
   {
     id: "roles",
     title: "Permissions",
     icon: ShieldCheck,
-    permission: "permissions.manage",
   },
   {
     id: "activities",
     title: "Activities",
     icon: Layers,
-    permission: "activities.manage",
   },
   {
     id: "products",
     title: "Designs",
     icon: Package,
-    permission: "products.manage",
   },
   {
     id: "assignments",
     title: "Assignments",
     icon: ClipboardList,
-    permission: "assignments.manage",
   },
-  { id: "kpi_targets", title: "KPIs", icon: Target, permission: "kpis.manage" },
+  { id: "kpi_targets", title: "KPIs", icon: Target },
   {
     id: "analytics",
     title: "Analytics",
     icon: ChartNoAxesCombined,
-    permission: "analytics.view",
   },
   {
     id: "settings",
     title: "Settings",
     icon: Settings,
-    permission: "settings.manage",
   },
 ];
 export function ManufacturingApp({
@@ -157,17 +154,9 @@ export function ManufacturingApp({
         if (n !== version.current) return;
         publish(s);
         const requested = pageFromPath(window.location.pathname);
-        const fallback =
-          s.state?.session ||
-          !allowed(s.state!.context.permissions, "analytics.view")
-            ? "work"
-            : "dashboard";
-        const entry = navigation.find((n) => n.id === requested);
-        const permitted =
-          entry &&
-          (!entry.permission ||
-            allowed(s.state!.context.permissions, entry.permission));
-        navigate(permitted ? requested! : fallback, true);
+        const fallback = firstPage(s.state!.context.permissions) ?? "work";
+        // Keep an explicitly requested protected page so denial is visible.
+        navigate(requested ?? fallback, true);
       } catch (e) {
         if (n === version.current) {
           setError(message(e));
@@ -324,11 +313,12 @@ export function ManufacturingApp({
         <Toaster />
       </>
     );
-  const permitted = navigation.filter(
-    (n) => !n.permission || allowed(state.context.permissions, n.permission),
+  const permitted = navigation.filter((n) =>
+    canViewPage(state.context.permissions, n.id),
   );
   const selected = permitted.find((n) => n.id === page);
-  const current = selected ? page : "work";
+  const current =
+    selected && canViewPage(state.context.permissions, page) ? page : "denied";
   const managed = permitted.length > 1;
   return (
     <SidebarProvider>
@@ -389,7 +379,9 @@ export function ManufacturingApp({
               ) : (
                 <Brand />
               )}
-              <span className="breadcrumb">{selected?.title ?? "My work"}</span>
+              <span className="breadcrumb">
+                {selected?.title ?? "Access unavailable"}
+              </span>
             </div>
             <div className="topbar-right">
               <span className={"sync-status " + (!online ? "offline" : "")}>
@@ -479,7 +471,23 @@ export function ManufacturingApp({
               "main-content " + (current === "work" ? "work-content" : "")
             }
           >
-            {current === "work" ? (
+            {current === "denied" ? (
+              <section className="settings-card" role="alert">
+                <h1>Access unavailable</h1>
+                <p>
+                  Your position does not have access to this page. Contact your
+                  Operations Manager.
+                </p>
+                {permitted[0] && (
+                  <button
+                    className="button primary"
+                    onClick={() => navigate(permitted[0].id, true)}
+                  >
+                    Open {permitted[0].title}
+                  </button>
+                )}
+              </section>
+            ) : current === "work" ? (
               <Employee
                 state={state}
                 store={store!}
@@ -487,6 +495,9 @@ export function ManufacturingApp({
                 run={run}
                 online={online}
               />
+            ) : current === "dashboard" &&
+              !allowed(state.context.permissions, "analytics.view") ? (
+              <Dashboard api={store!.api} lastSync={state.lastSync} />
             ) : current === "dashboard" || current === "analytics" ? (
               <Analytics
                 key={current}
@@ -504,6 +515,23 @@ export function ManufacturingApp({
                 refresh={reload}
               />
             )}
+            {!allowed(state.context.permissions, "my_work.access") &&
+              state.session &&
+              state.session.status !== "completed" && (
+                <section className="settings-card">
+                  <p>
+                    My work access has changed. Finish your existing session
+                    below; new sessions are unavailable.
+                  </p>
+                  <Employee
+                    state={state}
+                    store={store!}
+                    busy={busy}
+                    run={run}
+                    online={online}
+                  />
+                </section>
+              )}
           </main>
         </SidebarInset>
       </div>

@@ -21,7 +21,7 @@ const context: Context = {
     position_id: "p",
     active: true,
   },
-  permissions: [],
+  permissions: ["my_work.access"],
   visibility: "OFF",
 };
 const fresh = (): Session => ({
@@ -353,4 +353,36 @@ test("authorization revocation removes cached management access without deleting
   expect(s.state?.context.permissions).toEqual([]);
   expect(s.state?.catalog.profiles).toEqual([]);
   expect(s.state?.conflict).toBe("Inactive account");
+});
+
+test("permission revocation refreshes even when saved work has a conflict", async () => {
+  const api = new Network(),
+    d = disk(),
+    s = new SessionStore(api, "u", d.storage);
+  await s.load();
+  const before = structuredClone(s.state!);
+  before.conflict = "Review saved work";
+  before.queue = [
+    {
+      request_id: "pending",
+      session_id: "s",
+      action: "finish",
+      at: new Date().toISOString(),
+      expected_revision: 99,
+    },
+  ];
+  await d.storage.write("u", before);
+  const rpc = api.rpc.bind(api);
+  api.rpc = async <T>(
+    name: string,
+    args?: Record<string, unknown>,
+  ): Promise<T> =>
+    name === "app_context"
+      ? ({ ...context, permissions: ["analytics.view"] } as T)
+      : rpc<T>(name, args);
+  await s.refresh();
+  expect(s.state?.context.permissions).toEqual(["analytics.view"]);
+  expect(s.state?.queue).toHaveLength(1);
+  expect(s.state?.conflict).toBeTruthy();
+  await expect(s.start("a", "d", null)).rejects.toThrow("My work access");
 });

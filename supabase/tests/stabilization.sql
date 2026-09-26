@@ -4,6 +4,7 @@ insert into public.positions(id,name) values('10000000-0000-4000-8000-0000000000
 insert into public.profiles(id,email,name,position_id) values('10000000-0000-4000-8000-000000000001','manufacturing-qa-admin@example.invalid','QA Admin','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000002','manufacturing-qa-worker@example.invalid','QA Worker','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000003','manufacturing-qa-other@example.invalid','QA Other','10000000-0000-4000-8000-000000000011');
 insert into auth.users(id,email) values('10000000-0000-4000-8000-000000000001','manufacturing-qa-admin@example.invalid'),('10000000-0000-4000-8000-000000000002','manufacturing-qa-worker@example.invalid'),('10000000-0000-4000-8000-000000000003','manufacturing-qa-other@example.invalid');
 insert into public.profile_roles select '10000000-0000-4000-8000-000000000001',id from public.roles where name='Administrator';
+insert into public.position_roles select p.id,r.id from public.positions p cross join public.roles r where p.name like 'QA %' and r.name='Employee';
 insert into public.activities(id,name) values('10000000-0000-4000-8000-000000000020','QA prep'),('10000000-0000-4000-8000-000000000021','QA forbidden');
 insert into public.activity_positions values('10000000-0000-4000-8000-000000000020','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000021','10000000-0000-4000-8000-000000000011');
 insert into public.products(id,name,sku) values('10000000-0000-4000-8000-000000000030','QA design','QA-001'),('10000000-0000-4000-8000-000000000031','QA other design','QA-002');
@@ -27,6 +28,7 @@ end $$;
 reset role;
 delete from public.position_roles where position_id='10000000-0000-4000-8000-000000000010';
 update public.positions set active=true where id='10000000-0000-4000-8000-000000000010';
+insert into public.position_roles select '10000000-0000-4000-8000-000000000010',id from public.roles where name='Employee';
 delete from public.profile_roles where profile_id='10000000-0000-4000-8000-000000000002';
 insert into public.profile_roles values('10000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000051');
 set local role authenticated;

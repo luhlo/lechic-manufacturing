@@ -16,7 +16,9 @@ Device approval is browser- and origin-specific, expires after 90 days, and is l
 
 ## First administrator
 
-The owner’s preauthorized profile is `lechicmiami@gmail.com`. Since the app requires an existing administrator, create this first Auth user through the correct Supabase project’s **Authentication → Users → Add user → Create new user** form. The owner enters their password and leaves **Auto confirm user** checked; this form sends no email. The existing database trigger links the reserved profile and preserves its Administrator role. Then sign in at https://lcwork.luhlo.com/. Do not enable public signups to bootstrap the account.
+The existing owner account is ready and assigned to OM. Refresh https://lcwork.luhlo.com/; no new account or manual Supabase change is required. See [position access and optional expiration](POSITION-ACCESS.md).
+
+For a **fresh installation only**, the owner’s preauthorized profile is `lechicmiami@gmail.com`. Since the app requires an existing administrator, create this first Auth user through the correct Supabase project’s **Authentication → Users → Add user → Create new user** form. The owner enters their password and leaves **Auto confirm user** checked; this form sends no email. The existing database trigger links the reserved profile and preserves its Administrator role. Then sign in at https://lcwork.luhlo.com/. Do not enable public signups to bootstrap the account.
 
 ## Backend and access controls
 
@@ -29,6 +31,10 @@ The owner’s preauthorized profile is `lechicmiami@gmail.com`. Since the app re
 - Username login uses the employee's current Auth email internally and verifies the existing password, without returning that email. Attempts are limited to 10 per username per 15 minutes, and 1,000 globally per 15 minutes. Email/password login remains available.
 - PIN login first checks a linked, active, confirmed, non-banned, non-anonymous account without verified MFA. It generates and immediately exchanges an existing-account-only recovery token server-side; no email is sent, no account is created, and no password changes. Returned IDs must match the PIN's account. The browser receives only access/refresh tokens and uses `auth.setSession`, so it enters the normal signed-in workflow, not the password-reset screen. Supabase may replace an outstanding recovery link during this exchange; request a fresh reset link when needed. [Supabase generateLink reference](https://supabase.com/docs/reference/javascript/auth-admin-generatelink).
 - Audit details record username changes, PIN change/disable flags and device approval/revocation; they exclude PINs, credential digests and device secrets.
+
+## Current position access and PIN expiration
+
+PIN is now the first/default login method. Per-employee expiration is OFF by default; enable it in Employees → Edit employee. See [current architecture, operator steps, and validation](POSITION-ACCESS.md). The evidence below describes earlier rollouts.
 
 ## Verification and limits
 

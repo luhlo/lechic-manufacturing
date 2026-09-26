@@ -17,9 +17,7 @@ export function Auth({
 }) {
   const [mode, setMode] = useState<"login" | "reset">("login");
   const [device] = useState(savedPinDevice);
-  const [method, setMethod] = useState<"password" | "pin">(() =>
-    device ? "pin" : "password",
-  );
+  const [method, setMethod] = useState<"password" | "pin">("pin");
   const [identifier, setIdentifier] = useState(""),
     [password, setPassword] = useState(""),
     [pin, setPin] = useState("");
@@ -67,6 +65,19 @@ export function Auth({
         <div className="auth-methods" aria-label="Sign-in method">
           <button
             type="button"
+            className={"button " + (method === "pin" ? "primary" : "")}
+            aria-pressed={method === "pin"}
+            disabled={busy}
+            onClick={() => {
+              setMethod("pin");
+              setNotice("");
+              setPassword("");
+            }}
+          >
+            PIN
+          </button>
+          <button
+            type="button"
             className={"button " + (method === "password" ? "primary" : "")}
             aria-pressed={method === "password"}
             disabled={busy}
@@ -78,24 +89,11 @@ export function Auth({
           >
             Email / username
           </button>
-          <button
-            type="button"
-            className={"button " + (method === "pin" ? "primary" : "")}
-            aria-pressed={method === "pin"}
-            disabled={busy}
-            onClick={() => {
-              setMethod("pin");
-              setNotice("");
-              setPassword("");
-            }}
-          >
-            4-digit PIN
-          </button>
         </div>
       )}
       {pinMode ? (
         <>
-          {device ? (
+          {
             <form
               className="form-stack"
               onSubmit={(e) => {
@@ -104,10 +102,10 @@ export function Auth({
               }}
             >
               <label className="field">
-                Four-digit PIN
+                PIN
                 <input
                   className="pin-input"
-                  aria-label="Four-digit PIN"
+                  aria-label="PIN"
                   type="password"
                   inputMode="numeric"
                   pattern="[0-9]{4}"
@@ -116,7 +114,7 @@ export function Auth({
                   autoComplete="off"
                   required
                   value={pin}
-                  disabled={busy}
+                  disabled={busy || !device}
                   onChange={(e) => {
                     const v = e.target.value.replace(/\D/g, "").slice(0, 4);
                     setPin(v);
@@ -126,17 +124,14 @@ export function Auth({
               </label>
               <button
                 className="button primary"
-                disabled={busy || !client || pin.length !== 4}
+                disabled={busy || !client || !device || pin.length !== 4}
               >
                 {busy ? "Signing in…" : "Sign in with PIN"}
                 <ArrowRight size={18} />
               </button>
-              <p className="muted tiny">
-                Approved device: {device.name}. Sign-in starts after the fourth
-                digit.
-              </p>
             </form>
-          ) : (
+          }
+          {!device && (
             <div className="notice">
               Ask a manager to sign in with their password and approve this
               device in Settings. Then you can use just your PIN.

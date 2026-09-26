@@ -58,6 +58,9 @@ page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(origin + "/login/");
   await page
+    .getByRole("button", { name: "Email / username", exact: true })
+    .click();
+  await page
     .getByLabel("Email or username", { exact: true })
     .fill("worker.one");
   await page.getByLabel("Password", { exact: true }).fill("local fixture only");
@@ -76,13 +79,14 @@ try {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByText("Invalid login credentials", { exact: true }).waitFor();
   assert.ok(requests[1].url.includes("/auth/v1/token?grant_type=password"));
-  await page.getByRole("button", { name: "4-digit PIN", exact: true }).click();
+  await page.getByRole("button", { name: "PIN", exact: true }).click();
   await page
     .getByText(/Ask a manager to sign in with their password/)
     .waitFor();
+  assert.equal(await page.getByLabel("PIN", { exact: true }).count(), 1);
   assert.equal(
-    await page.getByLabel("Four-digit PIN", { exact: true }).count(),
-    0,
+    await page.getByLabel("PIN", { exact: true }).isEnabled(),
+    false,
   );
   const device = {
     id: "local-device",
@@ -99,7 +103,7 @@ try {
     device,
   );
   await page.reload();
-  const pin = page.getByLabel("Four-digit PIN", { exact: true });
+  const pin = page.getByLabel("PIN", { exact: true });
   await pin.fill("012");
   assert.equal(requests.length, 2, "three digits do not submit");
   await pin.pressSequentially("3");

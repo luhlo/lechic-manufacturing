@@ -23,6 +23,8 @@ npm run dev
 
 Before switching from the existing review Site to the new GitHub URL, wait for **Synced** on the old origin. Sign in again on the new origin to recover the same server session. Pending offline events cannot move between origins.
 
+See [position access, OM setup, optional PIN expiration, and current tests](docs/POSITION-ACCESS.md).
+
 ## What is implemented
 
 - Mobile employee workflow: position-specific activity tiles, current assignments first, forgiving design/SKU search, Work / Walking / Interruption controls, Finish then quantity.

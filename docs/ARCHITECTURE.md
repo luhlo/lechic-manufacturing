@@ -8,7 +8,9 @@ Inspected `lib/model.dart`, `lib/storage.dart`, `lib/cloud.dart`, `lib/account.d
 
 ## Application
 
-React 19 / TypeScript / Vite 8 static SPA; responsive employee and management surfaces. The deployment pass removed the unused Sites Vinext server wrapper and starter D1/Worker infrastructure. GitHub Pages serves static `dist/` assets and physical route directories; no application server is deployed. Supabase Auth and Postgres are the source of truth. IndexedDB stores a user-scoped session snapshot and durable operation queue. A service worker caches only the application shell/assets, never Supabase responses. No sample production catalog is seeded. A separate explicit demo runs in local browser storage only.
+React 19 / TypeScript / Vite 8 static SPA; responsive employee and management surfaces. The deployment pass removed the unused Sites Vinext server wrapper and starter D1/Worker infrastructure. GitHub Pages serves static `dist/` assets and physical route directories; no application server is deployed. Supabase Auth and Postgres are the source of truth. IndexedDB stores a user-scoped session snapshot and durable operation queue. A service worker caches only the application shell/assets, never Supabase responses. No sample production catalog is seeded. Public sample entry and registration are unavailable; local fixtures are isolated from the production application.
+
+See [the current position-permission and PIN-policy design](POSITION-ACCESS.md) for the latest schema and verification.
 
 ## Data and authorization
 

@@ -235,6 +235,11 @@ export function createLoginHandler(
             403,
             "This device needs manager approval for PIN sign-in.",
           );
+        if (record.error === "pin_expired")
+          throw new LoginError(
+            403,
+            "Your PIN has expired. Ask your manager to reset it, or use Email / username and your password.",
+          );
         if (!record.user_id)
           throw new LoginError(401, "PIN not recognized. Please try again.");
         const user = await existingUser(record.user_id);
@@ -417,6 +422,10 @@ export function createLoginHandler(
             username: status.username,
             pin_enabled: status.pin_enabled,
             account_ready: !!status.user_id,
+            pin_expiration_enabled: status.pin_expiration_enabled === true,
+            pin_changed_at: status.pin_changed_at ?? null,
+            pin_expires_at: status.pin_expires_at ?? null,
+            pin_expired: status.pin_expired === true,
           });
         const username = String(body.username ?? "")
           .trim()

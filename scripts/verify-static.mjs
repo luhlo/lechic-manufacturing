@@ -31,6 +31,6 @@ for (const file of readdirSync(root + "/assets")) {
   }
 }
 const paths = JSON.parse(readFileSync("lib/manufacturing/page-paths.json", "utf8"));
-for (const path of ["/login", ...Object.values(paths)])
+for (const path of ["/login", "/employees", "/settings", ...Object.values(paths)])
   assert.equal(readFileSync(root + path + "/index.html", "utf8"), html);
 console.log("Static output: physical deep routes, asset paths, manifest, safe PWA update and public-only key checks passed");

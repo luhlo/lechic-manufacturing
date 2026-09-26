@@ -5,7 +5,7 @@ const root = "dist";
 const html = readFileSync(root + "/index.html", "utf8");
 const paths = JSON.parse(readFileSync("lib/manufacturing/page-paths.json", "utf8"));
 // GitHub Pages serves real route directories; no SPA rewrite server is needed.
-for (const path of ["/login", ...Object.values(paths)]) {
+for (const path of ["/login", "/employees", "/settings", ...Object.values(paths)]) {
   mkdirSync(root + path, { recursive: true });
   writeFileSync(root + path + "/index.html", html);
 }

@@ -59,6 +59,17 @@ export class Api {
     const c = emptyCatalog();
     await Promise.all(
       Object.keys(c).map(async (name) => {
+        if (
+          name === "profiles" &&
+          context &&
+          !allowed(context.permissions, "employees.view") &&
+          !allowed(context.permissions, "permissions.manage")
+        ) {
+          const directory =
+            await this.rpc<Catalog["profiles"]>("employee_directory");
+          c.profiles = directory.length ? directory : [context.profile];
+          return;
+        }
         const all: unknown[] = [];
         for (let page = 0; ; page++) {
           let query = this.client.from(name).select("*");
@@ -76,7 +87,7 @@ export class Api {
           if (
             name === "assignments" &&
             context &&
-            !allowed(context.permissions, "assignments.manage") &&
+            !allowed(context.permissions, "assignments.view") &&
             !allowed(context.permissions, "analytics.view")
           )
             query = query
@@ -210,14 +221,19 @@ export class SessionStore {
   async refresh() {
     return this.exclusive(async () => {
       this.state = (await this.disk.read(this.uid)) ?? this.state;
-      if (this.state?.queue.length) await this.syncUnlocked();
-      if (this.state?.conflict || this.state?.queue.length) return this.state;
       try {
         const context = await this.api.rpc<Context>("app_context");
-        const [catalog, session] = await Promise.all([
-          this.api.catalog(context),
-          this.api.rpc<Session | null>("active_session"),
-        ]);
+        const catalog = await this.api.catalog(context);
+        // Refresh access even while offline events need review. Never retain a revoked catalog.
+        if (this.state) {
+          this.state.context = context;
+          this.state.catalog = catalog;
+          this.state.lastSync = new Date().toISOString();
+          await this.disk.write(this.uid, this.state);
+          if (this.state.queue.length) await this.syncUnlocked();
+          if (this.state.conflict || this.state.queue.length) return this.state;
+        }
+        const session = await this.api.rpc<Session | null>("active_session");
         const next = {
           context,
           catalog,
@@ -263,6 +279,8 @@ export class SessionStore {
     return this.exclusive(async () => {
       this.state = (await this.disk.read(this.uid)) ?? this.state;
       if (!this.state) throw Error("Sign in first.");
+      if (!allowed(this.state.context.permissions, "my_work.access"))
+        throw Error("My work access is required to start a session.");
       if (this.state.session && this.state.session.status !== "completed")
         throw Error("You already have an active session.");
       if (this.state.queue.length || this.state.conflict)

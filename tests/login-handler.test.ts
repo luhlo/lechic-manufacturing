@@ -363,6 +363,10 @@ describe("manager authentication", () => {
       username: "worker",
       pin_enabled: true,
       account_ready: true,
+      pin_expiration_enabled: false,
+      pin_changed_at: null,
+      pin_expires_at: null,
+      pin_expired: false,
     });
   });
 });
@@ -548,4 +552,14 @@ describe("administrator-created accounts", () => {
       expect(calls.some((c) => c.path === "/auth/v1/admin/users")).toBe(false);
     },
   );
+});
+
+test("expired PIN has an explicit recovery message and never mints a session", async () => {
+  const { handler, calls } = fixture(() => response({ error: "pin_expired" }));
+  const r = await handler(
+    request({ action: "pin", pin: "1234", device_token: deviceToken }),
+  );
+  expect(r.status).toBe(403);
+  expect((await r.json()).error).toContain("Your PIN has expired.");
+  expect(calls).toHaveLength(1);
 });

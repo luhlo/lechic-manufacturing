@@ -13,6 +13,7 @@ export interface Profile extends Row {
   auth_user_id: string | null;
   email: string;
   username?: string | null;
+  pin_expiration_enabled?: boolean;
   position_id: string | null;
   active: boolean;
 }
@@ -100,6 +101,14 @@ export interface CachedState {
   lastSync: string;
 }
 export const permissionNames: Record<string, string> = {
+  "my_work.access": "My work",
+  "dashboard.view": "View dashboard",
+  "assignments.view": "View assignments",
+  "kpis.view": "View KPIs",
+  "employees.view": "View employees",
+  "positions.view": "View positions",
+  "activities.view": "View activities",
+  "products.view": "View designs",
   "employees.manage": "Manage employees",
   "positions.manage": "Manage positions",
   "activities.manage": "Manage activities",
@@ -111,4 +120,28 @@ export const permissionNames: Record<string, string> = {
   "permissions.manage": "Manage permissions",
 };
 export const allowed = (permissions: string[], key: string) =>
-  permissions.includes("*") || permissions.includes(key);
+  permissions.includes("*") ||
+  permissions.includes(key) ||
+  (key.endsWith(".view") &&
+    permissions.includes(key.replace(/\.view$/, ".manage")));
+
+export const pagePermissions: Record<string, string> = {
+  work: "my_work.access",
+  dashboard: "dashboard.view",
+  profiles: "employees.view",
+  positions: "positions.view",
+  roles: "permissions.manage",
+  activities: "activities.view",
+  products: "products.view",
+  assignments: "assignments.view",
+  kpi_targets: "kpis.view",
+  analytics: "analytics.view",
+  settings: "settings.manage",
+};
+export const canViewPage = (permissions: string[], page: string) =>
+  !!pagePermissions[page] && allowed(permissions, pagePermissions[page]);
+export const canManagePage = (permissions: string[], page: string) =>
+  !!pagePermissions[page] &&
+  allowed(permissions, pagePermissions[page].replace(/\.view$/, ".manage"));
+export const firstPage = (permissions: string[]) =>
+  Object.keys(pagePermissions).find((page) => canViewPage(permissions, page));

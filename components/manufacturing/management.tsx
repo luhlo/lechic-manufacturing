@@ -14,12 +14,15 @@ import type { Api } from "@/lib/manufacturing/api";
 import { message } from "@/lib/manufacturing/api";
 import {
   allowed,
+  canManagePage,
   permissionNames,
   type CachedState,
   type Row,
 } from "@/lib/manufacturing/types";
 import { localDate, normalize } from "@/lib/manufacturing/domain";
 import { Check, DataTable, Pick } from "./primitives";
+import { PositionAccess } from "./position-access";
+import { PinExpiration } from "./pin-expiration";
 import { EmployeeLoginSettings, PinDevices } from "./login-settings";
 const titles: Record<string, string> = {
   profiles: "Employees",
@@ -52,6 +55,7 @@ export function Management({
   refresh: () => Promise<void>;
 }) {
   const c = state.catalog;
+  const canEdit = canManagePage(state.context.permissions, page);
   const [query, setQuery] = useState(""),
     [editing, setEditing] = useState<Record<string, unknown> | null>(null),
     [saving, setSaving] = useState(false),
@@ -65,7 +69,9 @@ export function Management({
       value: r.id,
       label: String(r.name ?? r.id) + (r.active === false ? " (inactive)" : ""),
     }));
-  const records = (c as unknown as Record<string, Row[]>)[entity] ?? [];
+  const records = (
+    (c as unknown as Record<string, Row[]>)[entity] ?? []
+  ).filter((r) => page !== "roles" || !r.managed_position_id);
   const filtered = records.filter((r) =>
     normalize(JSON.stringify(r)).includes(normalize(query)),
   );
@@ -144,16 +150,17 @@ export function Management({
           : "Active"}
     </span>
   );
-  const action = (r: Row) => (
-    <button
-      className="edit-button"
-      aria-label={`Edit ${r.name ?? find(c.products, r.product_id)}`}
-      onClick={() => edit(r)}
-    >
-      <Pencil size={15} />
-      Edit
-    </button>
-  );
+  const action = (r: Row) =>
+    canEdit ? (
+      <button
+        className="edit-button"
+        aria-label={`Edit ${r.name ?? find(c.products, r.product_id)}`}
+        onClick={() => edit(r)}
+      >
+        <Pencil size={15} />
+        Edit
+      </button>
+    ) : null;
   const table = () => {
     switch (page) {
       case "profiles":
@@ -175,7 +182,7 @@ export function Management({
               status(r),
               <div className="login-actions" key="actions">
                 {action(r)}
-                {api.client && (
+                {canEdit && api.client && (
                   <EmployeeLoginSettings
                     client={api.client}
                     profile={r}
@@ -195,7 +202,17 @@ export function Management({
               <strong key="name">{r.name}</strong>,
               c.profiles.filter((p) => p.position_id === r.id).length,
               status(r),
-              action(r),
+              <div className="login-actions" key="actions">
+                {action(r)}
+                {allowed(state.context.permissions, "permissions.manage") && (
+                  <PositionAccess
+                    position={r}
+                    state={state}
+                    api={api}
+                    refresh={refresh}
+                  />
+                )}
+              </div>,
             ])}
           />
         );
@@ -283,7 +300,7 @@ export function Management({
                     ? "Full administration"
                     : (permissionNames[x.permission_id] ?? x.permission_id),
                 )
-                .join(", ") || "Employee workflow only",
+                .join(", ") || "No app access",
               status(r),
               action(r),
             ])}
@@ -342,23 +359,27 @@ export function Management({
           <p className="eyebrow">WORKSPACE / CONFIGURATION</p>
           <h1>{titles[page]}</h1>
           <p className="muted">
-            {page === "kpi_targets"
-              ? "Design-specific targets take priority over activity targets. Edits create a new version."
-              : page === "roles"
-                ? "Give employees and positions the capabilities they need."
-                : page === "profiles"
-                  ? "Add an employee’s email before they create their account."
-                  : page === "activities"
-                    ? "Link each activity to the positions that can perform it."
-                    : page === "assignments"
-                      ? "Current assignments appear first on each employee’s phone."
-                      : "Create, edit, or deactivate records while preserving work history."}
+            {!canEdit
+              ? "View only. Contact your Operations Manager to make changes."
+              : page === "kpi_targets"
+                ? "Design-specific targets take priority over activity targets. Edits create a new version."
+                : page === "roles"
+                  ? "Advanced employee overrides. Configure primary app access in Positions."
+                  : page === "profiles"
+                    ? "Assign a position for app access. Administrators create login accounts."
+                    : page === "activities"
+                      ? "Link each activity to the positions that can perform it."
+                      : page === "assignments"
+                        ? "Current assignments appear first on each employee’s phone."
+                        : "Create, edit, or deactivate records while preserving work history."}
           </p>
         </div>
-        <button className="button primary" onClick={() => edit()}>
-          <Plus size={18} />
-          Add {singular[page]}
-        </button>
+        {canEdit && (
+          <button className="button primary" onClick={() => edit()}>
+            <Plus size={18} />
+            Add {singular[page]}
+          </button>
+        )}
       </div>
       {page === "roles" ? (
         <Tabs defaultValue="roles">
@@ -373,10 +394,7 @@ export function Management({
                 label="Assign roles to"
                 value={assignmentScope}
                 onChange={setAssignmentScope}
-                options={[
-                  { value: "profile_roles", label: "Employees" },
-                  { value: "position_roles", label: "Positions" },
-                ]}
+                options={[{ value: "profile_roles", label: "Employees" }]}
               />
               <RoleAssignments
                 key={assignmentScope}
@@ -491,10 +509,16 @@ export function Management({
                     "text",
                     false,
                   )}
+                  <PinExpiration
+                    client={api.client}
+                    profileId={editing.id ? String(editing.id) : null}
+                    enabled={editing.pin_expiration_enabled === true}
+                    onChange={(v) => update("pin_expiration_enabled", v)}
+                  />
                   <p className="muted tiny">
                     After saving, an administrator can open Login options to
                     create the employee’s account and assign a username and PIN.
-                    Manage their roles in Permissions.
+                    Access is inherited from their position.
                   </p>
                 </>
               )}
@@ -650,16 +674,18 @@ function RoleAssignments({
         }}
         options={list.map((r) => ({ value: r.id, label: String(r.name) }))}
       />
-      {c.roles.map((r) => (
-        <Check
-          key={r.id}
-          label={String(r.name)}
-          checked={roles.includes(r.id)}
-          onChange={(on) =>
-            setRoles(on ? [...roles, r.id] : roles.filter((x) => x !== r.id))
-          }
-        />
-      ))}
+      {c.roles
+        .filter((r) => !r.managed_position_id)
+        .map((r) => (
+          <Check
+            key={r.id}
+            label={String(r.name)}
+            checked={roles.includes(r.id)}
+            onChange={(on) =>
+              setRoles(on ? [...roles, r.id] : roles.filter((x) => x !== r.id))
+            }
+          />
+        ))}
       <button
         className="button primary"
         disabled={

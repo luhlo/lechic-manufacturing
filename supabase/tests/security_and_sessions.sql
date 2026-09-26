@@ -4,6 +4,7 @@ insert into public.positions(id,name) values('10000000-0000-4000-8000-0000000000
 insert into public.profiles(id,email,name,position_id) values('10000000-0000-4000-8000-000000000001','manufacturing-qa-admin@example.invalid','QA Admin','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000002','manufacturing-qa-worker@example.invalid','QA Worker','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000003','manufacturing-qa-other@example.invalid','QA Other','10000000-0000-4000-8000-000000000011');
 insert into auth.users(id,email) values('10000000-0000-4000-8000-000000000001','manufacturing-qa-admin@example.invalid'),('10000000-0000-4000-8000-000000000002','manufacturing-qa-worker@example.invalid'),('10000000-0000-4000-8000-000000000003','manufacturing-qa-other@example.invalid');
 insert into public.profile_roles select '10000000-0000-4000-8000-000000000001',id from public.roles where name='Administrator';
+insert into public.position_roles select p.id,r.id from public.positions p cross join public.roles r where p.name like 'QA %' and r.name='Employee';
 insert into public.activities(id,name) values('10000000-0000-4000-8000-000000000020','QA prep'),('10000000-0000-4000-8000-000000000021','QA forbidden');
 insert into public.activity_positions values('10000000-0000-4000-8000-000000000020','10000000-0000-4000-8000-000000000010'),('10000000-0000-4000-8000-000000000021','10000000-0000-4000-8000-000000000011');
 insert into public.products(id,name,sku) values('10000000-0000-4000-8000-000000000030','QA design','QA-001'),('10000000-0000-4000-8000-000000000031','QA other design','QA-002');
@@ -16,7 +17,7 @@ select set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002'
 select set_config('request.jwt.claims','{"sub":"10000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 set local role authenticated;
 do $$ declare c jsonb; req jsonb; s jsonb; base timestamptz=now()-interval '240 seconds'; sid uuid='10000000-0000-4000-8000-000000000070';m record;begin
- c=public.app_context();assert c->'profile'->>'name'='QA Worker','auth profile';assert jsonb_array_length(c->'permissions')=0,'employee has no management permissions';
+ c=public.app_context();assert c->'profile'->>'name'='QA Worker','auth profile';assert c->'permissions'='["my_work.access"]'::jsonb,'employee has no management permissions';
  assert (select count(*) from public.profiles)=1,'RLS employee isolation';assert (select count(*) from public.activities)=1,'activity filtering';assert (select count(*) from public.kpi_targets)=0,'KPI targets hidden OFF';assert (select count(*) from public.assignments)=1,'own assignments';
  begin perform public.manage('positions','{"name":"Unauthorized"}');raise exception 'FAIL admin RPC allowed';exception when insufficient_privilege then null;end;
  begin insert into public.positions(name) values('Unauthorized direct');raise exception 'FAIL direct write allowed';exception when insufficient_privilege then null;end;

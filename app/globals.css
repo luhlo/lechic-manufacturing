@@ -1410,8 +1410,65 @@ legend {
   }
 }
 
-.auth-methods { display: flex; gap: .5rem; margin: 1.25rem 0; }
-.auth-methods .button { flex: 1; padding: .75rem .6rem; font-size: .9rem; }
-.pin-input { text-align: center; letter-spacing: .7rem; font-size: 2rem; min-height: 4rem; }
-.login-actions { display: flex; flex-wrap: wrap; gap: .7rem; align-items: center; }
-.pin-device-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .85rem 0; border-bottom: 1px solid var(--border); }
+.auth-methods {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+.auth-methods .button {
+  flex: 1;
+  padding: 0.75rem 0.6rem;
+  font-size: 0.9rem;
+}
+.pin-input {
+  text-align: center;
+  letter-spacing: 0.7rem;
+  font-size: 2rem;
+  min-height: 4rem;
+}
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: center;
+}
+.pin-device-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.access-row {
+  border-top: 1px solid var(--border);
+  padding: 0.7rem 0;
+}
+.access-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  margin-top: 0.35rem;
+}
+.pin-policy dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.pin-policy dd {
+  margin: 0;
+}
+.dashboard-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+.dashboard-totals > div {
+  display: grid;
+  gap: 0.4rem;
+}
+.dashboard-totals strong {
+  font-size: 1.8rem;
+}

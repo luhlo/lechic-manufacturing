@@ -43,7 +43,7 @@ watch(page);
 const swFile = "dist/sw.js",
   original = fs.readFileSync(swFile, "utf8");
 const login = async () => {
-  await page.getByRole("button", { name: "Sign in", exact: true }).waitFor();
+  await page.getByRole("button", { name: "PIN", exact: true }).waitFor();
   await page
     .getByText(
       "Accounts are created by an administrator. Public registration is not available.",
@@ -60,6 +60,8 @@ const login = async () => {
 try {
   const routes = new Set([
     "/login",
+    "/employees",
+    "/settings",
     ...Object.values(
       JSON.parse(fs.readFileSync("lib/manufacturing/page-paths.json", "utf8")),
     ),
