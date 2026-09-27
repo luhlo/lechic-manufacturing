@@ -511,6 +511,7 @@ export function ManufacturingApp({
               </section>
             ) : current === "work" ? (
               <Employee
+                key={state.context.profile.id}
                 state={state}
                 store={store!}
                 busy={busy}
@@ -546,6 +547,7 @@ export function ManufacturingApp({
                     below; new sessions are unavailable.
                   </p>
                   <Employee
+                    key={state.context.profile.id}
                     state={state}
                     store={store!}
                     busy={busy}

@@ -19,11 +19,47 @@ import {
   rate,
   totals,
 } from "@/lib/manufacturing/domain";
+import {
+  reportingClock,
+  reportingDayBounds,
+  addReportingDays,
+  reportingDateLabel,
+} from "@/lib/manufacturing/reporting-time";
+import { recordedContext } from "@/lib/manufacturing/workflow";
+import { WorkTimeline } from "./work-timeline";
 import { DataTable, Metric, Pick } from "./primitives";
 const num = (v: number | null) =>
   v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const duration = (v: number) => `${num(v / 60)} min`;
-export function Analytics({
+type AnalyticsProps = {
+  api: Api;
+  state: CachedState;
+  dashboard: boolean;
+  onNavigate: (v: string) => void;
+};
+export function Analytics(props: AnalyticsProps) {
+  const [view, setView] = useState("production");
+  return (
+    <>
+      {!props.dashboard && (
+        <div className="analytics-view-switch">
+          <Tabs value={view} onValueChange={setView}>
+            <TabsList>
+              <TabsTrigger value="production">Production</TabsTrigger>
+              <TabsTrigger value="timeline">Work timeline</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      )}
+      {!props.dashboard && view === "timeline" ? (
+        <WorkTimeline api={props.api} state={props.state} />
+      ) : (
+        <ProductionAnalytics {...props} />
+      )}
+    </>
+  );
+}
+function ProductionAnalytics({
   api,
   state,
   dashboard,
@@ -35,9 +71,7 @@ export function Analytics({
   onNavigate: (v: string) => void;
 }) {
   const [from, setFrom] = useState(() => {
-      const d = new Date();
-      if (!dashboard) d.setDate(d.getDate() - 6);
-      return localDate(d);
+      return addReportingDays(localDate(), dashboard ? 0 : -6);
     }),
     [to, setTo] = useState(localDate()),
     [employee, setEmployee] = useState(""),
@@ -66,12 +100,11 @@ export function Analytics({
       try {
         if (!from || !to || from > to)
           throw Error("Choose a valid start and end date.");
-        const end = new Date(`${to}T00:00:00`);
-        end.setDate(end.getDate() + 1);
-        const before = new Date(`${from}T00:00:00`).toISOString();
+        const end = reportingDayBounds(to).end;
+        const before = reportingDayBounds(from).start;
         const filter = {
           from: before,
-          to: end.toISOString(),
+          to: end,
           employee,
           position,
           activity,
@@ -94,8 +127,16 @@ export function Analytics({
             completed
               .filter((s) => s.quantity !== null)
               .map((s) => [
-                s.activity_id + ":" + s.product_id,
-                { activity_id: s.activity_id, product_id: s.product_id },
+                s.activity_id +
+                  ":" +
+                  s.product_id +
+                  ":" +
+                  (s.step_id ?? "general"),
+                {
+                  activity_id: s.activity_id,
+                  product_id: s.product_id,
+                  step_id: s.step_id ?? null,
+                },
               ]),
           ).values(),
         ];
@@ -112,6 +153,7 @@ export function Analytics({
             {
               activity_id: string;
               product_id: string | null;
+              step_id: string | null;
               rate: number | null;
               samples: number;
             }[]
@@ -120,7 +162,14 @@ export function Analytics({
             p_pairs: pairs.slice(i, i + 500),
           });
           rows.forEach(
-            (r) => (baselineEntries[r.activity_id + ":" + r.product_id] = r),
+            (r) =>
+              (baselineEntries[
+                r.activity_id +
+                  ":" +
+                  r.product_id +
+                  ":" +
+                  (r.step_id ?? "general")
+              ] = r),
           );
         }
         if (live) {
@@ -168,22 +217,35 @@ export function Analytics({
   const sum = productionMetrics(filtered);
   const groups = new Map<string, { label: string; sessions: Session[] }>();
   for (const s of filtered) {
-    const key =
-      group === "employee"
-        ? s.employee_id
-        : group === "position"
-          ? (s.position_id ?? "none")
-          : group === "activity"
-            ? s.activity_id
-            : (s.product_id ?? "none");
     const label =
       group === "employee"
         ? s.employee_name
         : group === "position"
           ? s.position_name
-          : group === "activity"
-            ? s.activity_name
-            : s.product_name || "No design";
+          : group === "category"
+            ? s.category_name || "Legacy / uncategorized"
+            : group === "activity"
+              ? [
+                  s.category_name || "Legacy / uncategorized",
+                  s.activity_name,
+                ].join(" · ")
+              : group === "step"
+                ? recordedContext(s) +
+                  (s.step_name ? "" : " · General activity")
+                : s.product_name || "No design";
+    const identity =
+      group === "employee"
+        ? s.employee_id
+        : group === "position"
+          ? s.position_id
+          : group === "category"
+            ? s.category_id
+            : group === "activity"
+              ? [s.category_id, s.activity_id]
+              : group === "step"
+                ? [s.category_id, s.activity_id, s.step_id]
+                : s.product_id;
+    const key = JSON.stringify([identity, label]);
     const entry = groups.get(key) ?? { label, sessions: [] };
     entry.sessions.push(s);
     groups.set(key, entry);
@@ -227,11 +289,7 @@ export function Analytics({
           </h1>
           <p className="muted">
             {dashboard
-              ? new Date().toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })
+              ? reportingDateLabel(new Date())
               : "Understand productive time, movement, and interruptions."}
           </p>
         </div>
@@ -321,22 +379,22 @@ export function Analytics({
       )}
       <div className="metrics-row primary-metrics">
         <Metric
-          label="Units completed"
+          label="Recorded units processed"
           value={num(sum.quantity)}
           note={`${filtered.length} completed sessions`}
         />
         <Metric
-          label="Productive work"
+          label="Recorded work"
           value={duration(sum.work)}
           note={`${sum.total ? num((sum.work / sum.total) * 100) : "0"}% of elapsed time`}
         />
         <Metric
-          label="Units / productive hour"
+          label="Units / recorded work hour"
           value={num(rate(sum.quantity, sum.rateWork))}
           note="Working time from quantity-based sessions"
         />
         <Metric
-          label="Units / elapsed hour"
+          label="Units / recorded session hour"
           value={num(rate(sum.quantity, sum.rateTotal))}
           note="Quantity-based sessions, including pauses"
         />
@@ -446,7 +504,14 @@ export function Analytics({
         </div>
         <Tabs value={group} onValueChange={setGroup}>
           <TabsList className="breakdown-tabs">
-            {["employee", "position", "activity", "product"].map((v) => (
+            {[
+              "employee",
+              "position",
+              "category",
+              "activity",
+              "step",
+              "product",
+            ].map((v) => (
               <TabsTrigger key={v} value={v}>
                 By {v === "product" ? "design" : v}
               </TabsTrigger>
@@ -463,8 +528,8 @@ export function Analytics({
             "Walk events",
             "Avg walk",
             "Walking %",
-            "Units / productive hr",
-            "Units / elapsed hr",
+            "Units / work hr",
+            "Units / session hr",
           ]}
           rows={grouped.map((g) => [
             <strong key="name">{g.label}</strong>,
@@ -487,8 +552,9 @@ export function Analytics({
           </div>
           <p className="muted comparison-note">
             Baseline uses earlier completed sessions for the same activity and
-            design, before {from}. Target is the KPI captured when the session
-            started. All three rates use productive hours.
+            design and step, before {from}. Target is the KPI captured when the
+            session started. Step work is not compared with whole-activity
+            targets. All three rates use recorded work hours.
           </p>
           <DataTable
             headers={[
@@ -503,7 +569,11 @@ export function Analytics({
             rows={filtered.map((s) => {
               const t = totals(s.segments);
               const baseline = baselines[
-                s.activity_id + ":" + s.product_id
+                s.activity_id +
+                  ":" +
+                  s.product_id +
+                  ":" +
+                  (s.step_id ?? "general")
               ] ?? { rate: null, samples: 0 };
               return [
                 <div key="name">
@@ -513,10 +583,14 @@ export function Analytics({
                       "No design"}
                   </small>
                 </div>,
-                s.activity_name,
+                recordedContext(s),
                 s.quantity ?? "Not applicable",
                 num(s.quantity === null ? null : baseline.rate),
-                num(s.quantity === null ? null : (targets[s.id] ?? null)),
+                num(
+                  s.quantity === null || s.step_id
+                    ? null
+                    : (targets[s.id] ?? null),
+                ),
                 num(rate(s.quantity, t.work)),
                 <button
                   key="action"
@@ -531,11 +605,13 @@ export function Analytics({
         </div>
       )}
       <p className="analytics-note">
-        Completed sessions are included by their start date in your device’s
-        local timezone. Entire sessions are counted, including sessions that
-        cross midnight. Active sessions are excluded from these totals. Time
-        without quantity is included in time totals and excluded from production
-        rates.
+        Completed sessions are included by their start date in America/Chicago.
+        Entire sessions are counted, including sessions that cross midnight.
+        Active sessions are excluded from these totals. Time without quantity is
+        included in time totals and excluded from production rates. Gaps are
+        never included in rate denominators. Recorded units processed may
+        represent the same pieces across different activities or steps; they are
+        not unique finished products.
       </p>
       <Dialog
         open={!!detail}
@@ -547,7 +623,11 @@ export function Analytics({
           <DialogHeader>
             <DialogTitle>{detail?.employee_name}</DialogTitle>
             <DialogDescription>
-              {[detail?.activity_name, detail?.product_name, detail?.sku]
+              {[
+                detail ? recordedContext(detail) : "",
+                detail?.product_name,
+                detail?.sku,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </DialogDescription>
@@ -555,22 +635,27 @@ export function Analytics({
           {detail && (
             <>
               <p>
-                {new Date(detail.started_at).toLocaleString()} ·{" "}
+                Started: {reportingClock(detail.started_at, true)}
+                <br />
+                Ended:{" "}
+                {detail.ended_at
+                  ? reportingClock(detail.ended_at, true)
+                  : "In progress"}
+                <br />
+                Elapsed: {clockText(totals(detail.segments).total)} ·{" "}
                 {detail.status.replace("_", " ")}
               </p>
               <DataTable
                 headers={["State", "Start", "End", "Duration"]}
                 rows={detail.segments.map((g) => [
                   g.kind,
-                  new Date(g.started_at).toLocaleTimeString(),
-                  g.ended_at
-                    ? new Date(g.ended_at).toLocaleTimeString()
-                    : "Active",
+                  reportingClock(g.started_at, true),
+                  g.ended_at ? reportingClock(g.ended_at, true) : "Active",
                   clockText(totals([g]).total),
                 ])}
               />
               <p>
-                Quantity:{" "}
+                Recorded units processed:{" "}
                 <strong>
                   {detail.quantity ??
                     (detail.status === "completed"

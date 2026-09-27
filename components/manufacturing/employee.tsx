@@ -11,6 +11,19 @@ import {
   Square,
 } from "lucide-react";
 import type { CachedState, Product } from "@/lib/manufacturing/types";
+import {
+  availableCategories,
+  availableSteps,
+  continuationStep,
+  readCategory,
+  rememberCategory,
+  validRememberedCategory,
+  recordedContext,
+} from "@/lib/manufacturing/workflow";
+import {
+  reportingClock,
+  reportingDateLabel,
+} from "@/lib/manufacturing/reporting-time";
 import { SessionStore } from "@/lib/manufacturing/api";
 import {
   clockText,
@@ -36,7 +49,15 @@ export function Employee({
   run: (fn: () => Promise<unknown>) => Promise<void>;
   online: boolean;
 }) {
-  const [activity, setActivity] = useState(""),
+  const [category, setCategory] = useState(() =>
+      readCategory(state.context.profile.id),
+    ),
+    [step, setStep] = useState<string | null>(null),
+    [stepChosen, setStepChosen] = useState(false),
+    [creating, setCreating] = useState(false),
+    [newName, setNewName] = useState(""),
+    [createNote, setCreateNote] = useState(""),
+    [activity, setActivity] = useState(""),
     [product, setProduct] = useState<Product | null>(null),
     [assignment, setAssignment] = useState<string | null>(null),
     [search, setSearch] = useState(false),
@@ -59,6 +80,7 @@ export function Employee({
     if (
       !s?.id ||
       s.requires_quantity === false ||
+      !!s.step_id ||
       state.context.visibility === "OFF"
     )
       return;
@@ -77,7 +99,13 @@ export function Employee({
     return () => {
       live = false;
     };
-  }, [s?.id, s?.requires_quantity, state.context.visibility, store]);
+  }, [
+    s?.id,
+    s?.requires_quantity,
+    s?.step_id,
+    state.context.visibility,
+    store,
+  ]);
 
   const acts = relevantActivities(
     state.catalog.activities,
@@ -88,7 +116,33 @@ export function Employee({
       ? state.context.profile.position_id
       : null,
   );
-  const selected = acts.find((a) => a.id === activity);
+  const allowCreation =
+    state.context.workflow?.employee_activity_creation === true;
+  const stepsEnabled = state.context.workflow?.activity_steps_enabled === true;
+  const positionId = state.catalog.positions.some(
+    (p) => p.id === state.context.profile.position_id && p.active,
+  )
+    ? state.context.profile.position_id
+    : null;
+  const categories = availableCategories(
+    state.catalog,
+    acts,
+    positionId,
+    allowCreation,
+  );
+  const selectedCategory = validRememberedCategory(category, categories);
+  const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
+  const categoryActs = acts.filter((a) => a.category_id === selectedCategory);
+  const selected = categoryActs.find((a) => a.id === activity);
+  const steps = availableSteps(state.catalog, selected, stepsEnabled);
+  const needsStep =
+    steps.length > 0 &&
+    (!stepChosen || (!!step && !steps.some((s) => s.id === step)));
+  const selectedStep = steps.find((s) => s.id === step);
+  useEffect(() => {
+    // Recovery owns the screen. Preferences only control the next task.
+    if (!s) rememberCategory(state.context.profile.id, selectedCategory);
+  }, [selectedCategory, state.context.profile.id, s]);
   const assigned = currentAssignments(
     state.catalog.assignments,
     state.context.profile.id,
@@ -97,6 +151,7 @@ export function Employee({
     state.catalog.products.some((p) => p.id === a.product_id && p.active),
   );
   const kpi =
+    !s?.step_id &&
     s?.requires_quantity !== false &&
     state.context.visibility !== "OFF" &&
     kpiState?.visibility !== "OFF" &&
@@ -115,7 +170,7 @@ export function Employee({
         const raw = error instanceof Error ? error.message : "";
         // Only surface known, actionable device/recovery errors; never leak RPC details.
         const friendly =
-          /clock|Start not confirmed|Reconnect|Sync or resolve|access is required/i.test(
+          /clock|Start not confirmed|Reconnect|Sync or resolve|access is required|activity creation|category|Activity name|activity is unavailable/i.test(
             raw,
           )
             ? raw
@@ -141,6 +196,11 @@ export function Employee({
   );
   const resetSelection = (nextActivity = "") => {
     setActivity(nextActivity);
+    setStep(null);
+    setStepChosen(false);
+    setCreating(false);
+    setNewName("");
+    setCreateNote("");
     setProduct(null);
     setAssignment(null);
     setQuantity("");
@@ -148,6 +208,11 @@ export function Employee({
     setQuery("");
     setWorkError("");
     window.scrollTo({ top: 0 });
+  };
+  const chooseCategory = (id: string) => {
+    setCategory(id);
+    rememberCategory(state.context.profile.id, id);
+    resetSelection();
   };
   const choose = (p: Product, id: string | null) => {
     setProduct(p);
@@ -162,11 +227,15 @@ export function Employee({
   if (s) {
     const t = totals(s.segments, now);
     const kind = s.segments.find((g) => !g.ended_at)?.kind;
-    const context = [s.activity_name, s.product_name]
+    const context = [recordedContext(s), s.product_name]
       .filter(Boolean)
       .join(" · ");
     if (s.status === "completed") {
-      const canContinue = acts.some((a) => a.id === s.activity_id);
+      const nextActivity = acts.find((a) => a.id === s.activity_id);
+      const nextCategory = s.category_id || nextActivity?.category_id || "";
+      const canUseCategory = categories.some((c) => c.id === nextCategory);
+      const canContinue =
+        canUseCategory && nextActivity?.category_id === nextCategory;
       return (
         <div className="employee-panel complete-panel">
           <span className="completion-mark">
@@ -175,7 +244,7 @@ export function Employee({
           <h1>
             {s.quantity === null
               ? "Activity completed"
-              : `${s.quantity.toLocaleString()} completed`}
+              : `${s.quantity.toLocaleString()} units processed`}
           </h1>
           <p>{context}</p>
           <p className="muted completion-saved">
@@ -200,7 +269,14 @@ export function Employee({
               onClick={() =>
                 act("Getting your next task…", async () => {
                   await store.clearCompleted();
+                  chooseCategory(nextCategory);
                   resetSelection(s.activity_id);
+                  const continuation = continuationStep(
+                    s,
+                    availableSteps(state.catalog, nextActivity, stepsEnabled),
+                  );
+                  setStep(continuation.stepId);
+                  setStepChosen(continuation.chosen);
                 })
               }
             >
@@ -212,13 +288,25 @@ export function Employee({
               onClick={() =>
                 act("Getting your activities…", async () => {
                   await store.clearCompleted();
-                  resetSelection();
+                  chooseCategory(canUseCategory ? nextCategory : "");
                 })
               }
             >
-              Choose different activity
+              Another activity in this category
             </button>
           </div>
+          <button
+            className="back-link centered"
+            disabled={blocked || !!state.queue.length}
+            onClick={() =>
+              act("Getting your categories…", async () => {
+                await store.clearCompleted();
+                chooseCategory("");
+              })
+            }
+          >
+            Change category
+          </button>
           {!canContinue && (
             <p className="quiet-note">
               This activity is no longer available. Choose another activity.
@@ -233,7 +321,7 @@ export function Employee({
       return (
         <div className="employee-panel">
           <p className="eyebrow">WORK FINISHED · TIMER STOPPED</p>
-          <h1>How many did you complete?</h1>
+          <h1>How many units did you process?</h1>
           <p className="muted">{context}</p>
           <form
             className="form-stack quantity-form"
@@ -246,7 +334,7 @@ export function Employee({
             }}
           >
             <label className="field">
-              Quantity completed
+              Quantity processed
               <input
                 className="quantity"
                 autoFocus
@@ -267,7 +355,7 @@ export function Employee({
             >
               {quantity && parsed === null
                 ? "Enter a whole number from 0 to 1,000,000,000."
-                : "Enter the number completed. Zero is okay."}
+                : "Enter the number processed. Zero is okay."}
             </p>
             <button
               className="button primary jumbo"
@@ -283,6 +371,10 @@ export function Employee({
     return (
       <div className="employee-panel active-work">
         <div className={"timer-card " + kind?.toLowerCase()}>
+          <p className="timer-context">
+            {s.category_name || "Legacy / uncategorized"}
+            {s.step_name ? ` · ${s.step_name}` : ""}
+          </p>
           <h1>{s.activity_name}</h1>
           {s.product_name && <p>{s.product_name}</p>}
           <div className="timer-value" aria-label="Elapsed total time">
@@ -298,6 +390,14 @@ export function Employee({
                 : "INTERRUPTION"}
           </div>
         </div>
+        <p className="quiet-note work-clock">
+          Started{" "}
+          {reportingClock(
+            s.started_at,
+            localDate(new Date(s.started_at)) !== localDate(new Date(now)),
+          )}{" "}
+          · Now {reportingClock(now)}
+        </p>
         {kind === "WORK" ? (
           <div className="timer-actions">
             <button
@@ -367,181 +467,336 @@ export function Employee({
     );
   return (
     <div className="employee-panel">
-      {!selected ? (
+      {!selectedCategory ? (
         <>
           <div className="work-greeting">
             <p>Hi, {state.context.profile.name.trim().split(/\s+/)[0]}</p>
-            <span>
-              {new Date(now).toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
-            </span>
+            <span>{reportingDateLabel(now)}</span>
           </div>
-          <h1>What are you working on?</h1>
+          <h1>Choose a category.</h1>
           <div className="activity-grid">
-            {acts.map((a) => (
+            {categories.map((c) => (
               <button
                 className="activity-tile"
-                key={a.id}
+                key={c.id}
                 disabled={blocked}
-                onClick={() => resetSelection(a.id)}
+                onClick={() => chooseCategory(c.id)}
               >
-                <strong>{a.name}</strong>
+                <strong>{c.name}</strong>
                 <ArrowRight size={23} />
               </button>
             ))}
           </div>
-          {!acts.length && (
+          {!categories.length && (
             <p className="empty">
-              Your manager needs to assign a position and link activities to it.
+              Your manager needs to link activities to your active position and
+              category.
             </p>
           )}
         </>
       ) : (
         <>
-          <button
-            className="back-link"
-            disabled={blocked}
-            onClick={() => resetSelection()}
-          >
-            <ArrowLeft size={18} />
-            Activities
-          </button>
-          {selected.requires_design === false || product ? (
+          <div className="category-heading">
+            <strong>{categoryName}</strong>
+            <button
+              className="back-link"
+              disabled={blocked}
+              onClick={() => chooseCategory("")}
+            >
+              Change category
+            </button>
+          </div>
+          {!selected ? (
             <>
-              <div className="work-start">
-                <h1>{selected.name}</h1>
-                {product && (
-                  <>
-                    <h2>{product.name}</h2>
-                    <p className="muted">SKU: {product.sku}</p>
-                  </>
-                )}
+              <h1>What are you doing?</h1>
+              <div className="activity-grid">
+                {categoryActs.map((a) => (
+                  <button
+                    className="activity-tile"
+                    key={a.id}
+                    disabled={blocked}
+                    onClick={() => resetSelection(a.id)}
+                  >
+                    <strong>{a.name}</strong>
+                    <ArrowRight size={23} />
+                  </button>
+                ))}
               </div>
-              <button
-                className="button primary jumbo"
-                disabled={blocked || !online}
-                onClick={() =>
-                  act("Starting…", async () => {
-                    await store.start(
-                      selected.id,
-                      selected.requires_design === false ? null : product!.id,
-                      selected.requires_design === false ? null : assignment,
-                    );
-                    setQuantity("");
-                    setProduct(null);
-                  })
-                }
-              >
-                <Play />
-                {pending ? "Starting…" : "Start"}
-              </button>
-              {selected.requires_design !== false && (
-                <button
-                  className="back-link centered"
-                  disabled={blocked}
-                  onClick={() => {
-                    setProduct(null);
-                    setAssignment(null);
-                  }}
-                >
-                  Choose a different design
-                </button>
+              {!categoryActs.length && (
+                <p className="empty">No activities in this category yet.</p>
               )}
-              {!online && (
-                <p className="notice">Reconnect to start a new session.</p>
+              {allowCreation &&
+                (!creating ? (
+                  <button
+                    className="button secondary jumbo"
+                    disabled={blocked || !online}
+                    onClick={() => setCreating(true)}
+                  >
+                    + New activity
+                  </button>
+                ) : (
+                  <form
+                    className="form-stack"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!online || !newName.trim()) return;
+                      act("Saving activity…", async () => {
+                        const result = await store.api.rpc<{
+                          id: string;
+                          existing: boolean;
+                        }>("employee_create_activity", {
+                          p_category: selectedCategory,
+                          p_name: newName.trim(),
+                        });
+                        await store.refresh();
+                        resetSelection(result.id);
+                        setCreateNote(
+                          result.existing
+                            ? "Selected the existing activity."
+                            : "Activity saved and selected.",
+                        );
+                      });
+                    }}
+                  >
+                    <label className="field">
+                      Activity name
+                      <input
+                        autoFocus
+                        required
+                        maxLength={100}
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      className="button primary jumbo"
+                      disabled={blocked || !online || !newName.trim()}
+                    >
+                      Save and select
+                    </button>
+                    <button
+                      type="button"
+                      className="back-link"
+                      disabled={blocked}
+                      onClick={() => setCreating(false)}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ))}
+              {allowCreation && !online && (
+                <p className="notice">Reconnect to create an activity.</p>
               )}
             </>
           ) : (
             <>
-              <p className="eyebrow">{selected.name}</p>
-              <h1>Choose a design.</h1>
-              <div className="section-label">
-                <h2>Today’s work</h2>
-                <span>{assigned.length}</span>
-              </div>
-              <div className="design-list">
-                {assigned.map((a) => {
-                  const p = state.catalog.products.find(
-                    (p) => p.id === a.product_id,
-                  )!;
-                  return (
-                    <button
-                      className="design-tile"
-                      key={a.id}
-                      disabled={blocked}
-                      onClick={() => choose(p, a.id)}
-                    >
-                      <span>
-                        <strong>{p.name}</strong>
-                        <small>{p.sku}</small>
-                        {a.target_quantity != null && (
-                          <small>
-                            {a.completed_quantity != null &&
-                            a.completed_quantity > 0
-                              ? `${a.completed_quantity} / ${a.target_quantity} completed`
-                              : `${a.target_quantity} assigned`}
-                          </small>
-                        )}
-                      </span>
-                      <ArrowRight />
-                    </button>
-                  );
-                })}
-              </div>
-              {!assigned.length && (
-                <p className="empty">
-                  No assignments for today. Search for a design to begin.
+              <button
+                className="back-link"
+                disabled={blocked}
+                onClick={() => resetSelection()}
+              >
+                <ArrowLeft size={18} />
+                Activities
+              </button>
+              {createNote && (
+                <p role="status" className="quiet-note">
+                  {createNote}
                 </p>
               )}
-              <button
-                className="button secondary jumbo"
-                aria-expanded={search}
-                disabled={blocked}
-                onClick={() => setSearch(!search)}
-              >
-                <Search size={20} />
-                Search another design
-              </button>
-              {search && (
-                <section
-                  className="work-search"
-                  aria-label="Search another design"
-                >
-                  <label className="search-box">
-                    <Search size={20} />
-                    <input
-                      autoFocus
-                      aria-label="Search name or SKU"
-                      placeholder="Search name or SKU"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                    />
-                  </label>
-                  <div className="design-list">
-                    {searchProducts(state.catalog.products, query).map((p) => (
+              {needsStep ? (
+                <>
+                  <p className="eyebrow">{selected.name}</p>
+                  <h1>Choose a step.</h1>
+                  <div className="activity-grid">
+                    {steps.map((value) => (
                       <button
-                        className="design-tile"
-                        key={p.id}
+                        key={value.id}
+                        className="activity-tile"
                         disabled={blocked}
-                        onClick={() => choose(p, null)}
+                        onClick={() => {
+                          setStep(value.id);
+                          setStepChosen(true);
+                        }}
                       >
-                        <span>
-                          <strong>{p.name}</strong>
-                          <small>{p.sku}</small>
-                        </span>
-                        <ArrowRight />
+                        <strong>{value.name}</strong>
+                        <ArrowRight size={23} />
                       </button>
                     ))}
+                    <button
+                      className="activity-tile"
+                      disabled={blocked}
+                      onClick={() => {
+                        setStep(null);
+                        setStepChosen(true);
+                      }}
+                    >
+                      <strong>General activity</strong>
+                      <ArrowRight size={23} />
+                    </button>
                   </div>
-                  {!searchProducts(state.catalog.products, query).length && (
-                    <p className="empty">
-                      No designs match. Try another name or SKU.
-                    </p>
+                </>
+              ) : (
+                <>
+                  {steps.length > 0 && (
+                    <div className="category-heading">
+                      <span>{selectedStep?.name || "General activity"}</span>
+                      <button
+                        className="back-link"
+                        disabled={blocked}
+                        onClick={() => setStepChosen(false)}
+                      >
+                        Change step
+                      </button>
+                    </div>
                   )}
-                </section>
+                  {selected.requires_design === false || product ? (
+                    <>
+                      <div className="work-start">
+                        <h1>{selected.name}</h1>
+                        {product && (
+                          <>
+                            <h2>{product.name}</h2>
+                            <p className="muted">SKU: {product.sku}</p>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        className="button primary jumbo"
+                        disabled={blocked || !online}
+                        onClick={() =>
+                          act("Starting…", async () => {
+                            await store.start(
+                              selected.id,
+                              selected.requires_design === false
+                                ? null
+                                : product!.id,
+                              selected.requires_design === false
+                                ? null
+                                : assignment,
+                              selectedStep?.id ?? null,
+                            );
+                            setQuantity("");
+                            setProduct(null);
+                          })
+                        }
+                      >
+                        <Play />
+                        {pending ? "Starting…" : "Start"}
+                      </button>
+                      {selected.requires_design !== false && (
+                        <button
+                          className="back-link centered"
+                          disabled={blocked}
+                          onClick={() => {
+                            setProduct(null);
+                            setAssignment(null);
+                          }}
+                        >
+                          Choose a different design
+                        </button>
+                      )}
+                      {!online && (
+                        <p className="notice">
+                          Reconnect to start a new session.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="eyebrow">{selected.name}</p>
+                      <h1>Choose a design.</h1>
+                      <div className="section-label">
+                        <h2>Today’s work</h2>
+                        <span>{assigned.length}</span>
+                      </div>
+                      <div className="design-list">
+                        {assigned.map((a) => {
+                          const p = state.catalog.products.find(
+                            (p) => p.id === a.product_id,
+                          )!;
+                          return (
+                            <button
+                              className="design-tile"
+                              key={a.id}
+                              disabled={blocked}
+                              onClick={() => choose(p, a.id)}
+                            >
+                              <span>
+                                <strong>{p.name}</strong>
+                                <small>{p.sku}</small>
+                                {a.target_quantity != null && (
+                                  <small>
+                                    {a.completed_quantity != null &&
+                                    a.completed_quantity > 0
+                                      ? `${a.completed_quantity} / ${a.target_quantity} recorded`
+                                      : `${a.target_quantity} assigned`}
+                                  </small>
+                                )}
+                              </span>
+                              <ArrowRight />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {!assigned.length && (
+                        <p className="empty">
+                          No assignments for today. Search for a design to
+                          begin.
+                        </p>
+                      )}
+                      <button
+                        className="button secondary jumbo"
+                        aria-expanded={search}
+                        disabled={blocked}
+                        onClick={() => setSearch(!search)}
+                      >
+                        <Search size={20} />
+                        Search another design
+                      </button>
+                      {search && (
+                        <section
+                          className="work-search"
+                          aria-label="Search another design"
+                        >
+                          <label className="search-box">
+                            <Search size={20} />
+                            <input
+                              autoFocus
+                              aria-label="Search name or SKU"
+                              placeholder="Search name or SKU"
+                              value={query}
+                              onChange={(e) => setQuery(e.target.value)}
+                            />
+                          </label>
+                          <div className="design-list">
+                            {searchProducts(state.catalog.products, query).map(
+                              (p) => (
+                                <button
+                                  className="design-tile"
+                                  key={p.id}
+                                  disabled={blocked}
+                                  onClick={() => choose(p, null)}
+                                >
+                                  <span>
+                                    <strong>{p.name}</strong>
+                                    <small>{p.sku}</small>
+                                  </span>
+                                  <ArrowRight />
+                                </button>
+                              ),
+                            )}
+                          </div>
+                          {!searchProducts(state.catalog.products, query)
+                            .length && (
+                            <p className="empty">
+                              No designs match. Try another name or SKU.
+                            </p>
+                          )}
+                        </section>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </>
           )}

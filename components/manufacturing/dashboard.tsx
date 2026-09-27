@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type Api, message } from "@/lib/manufacturing/api";
 import { localDate } from "@/lib/manufacturing/domain";
+import { reportingDayBounds } from "@/lib/manufacturing/reporting-time";
 import { DataTable } from "./primitives";
 interface Summary {
   completed: number;
@@ -27,12 +28,10 @@ export function Dashboard({ api, lastSync }: { api: Api; lastSync: string }) {
       setError("");
       setSummary(null);
       try {
-        const from = new Date(day + "T00:00:00"),
-          to = new Date(from);
-        to.setDate(to.getDate() + 1);
+        const { start, end } = reportingDayBounds(day);
         const data = await api.rpc<Summary>("dashboard_summary", {
-          p_from: from.toISOString(),
-          p_to: to.toISOString(),
+          p_from: start,
+          p_to: end,
         });
         if (live) setSummary(data);
       } catch (e) {
@@ -68,9 +67,13 @@ export function Dashboard({ api, lastSync }: { api: Api; lastSync: string }) {
         <>
           <div className="settings-card">
             <h2>Daily production</h2>
+            <p className="muted">
+              America/Chicago · Completed sessions by start date. Counts
+              represent processed units, which may repeat across stages.
+            </p>
             <div className="dashboard-totals">
               {[
-                ["Units", summary.quantity],
+                ["Recorded units processed", summary.quantity],
                 ["Completed sessions", summary.completed],
                 ["Productive minutes", summary.work_seconds / 60],
                 ["Walking minutes", summary.walking_seconds / 60],

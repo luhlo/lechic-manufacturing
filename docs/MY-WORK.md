@@ -2,6 +2,8 @@
 
 Release: 2026-09-26. App: https://lcwork.luhlo.com/
 
+This documents the initial My Work phase. The 2026-09-27 extension adds categories, optional steps and Chicago reporting; see [Categories and daily timeline](CATEGORIES-TIMELINE.md) for current navigation, assignment step scope and verification.
+
 ## Scope and employee workflow
 
 The existing React screens, configured Supabase catalog, timestamp/session engine, durable IndexedDB queue, PIN-first authentication and position permissions are retained. Management changes are the two activity controls only. Analytics changes are limited to compatibility with optional designs and quantities.

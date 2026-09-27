@@ -39,7 +39,56 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
         )
       ).rows;
     }
+    if (file.includes("categories_steps_timeline")) {
+      legacySession = (
+        await db.query(
+          `select to_jsonb(s) as data from public.sessions s where id='60000000-0000-4000-8000-000000000001'`,
+        )
+      ).rows;
+      legacyActivity = (
+        await db.query(
+          `select to_jsonb(a) as data from public.activities a where id='60000000-0000-4000-8000-000000000001'`,
+        )
+      ).rows;
+    }
     await db.exec(readFileSync("supabase/migrations/" + file, "utf8"));
+    if (file.includes("categories_steps_timeline")) {
+      expect(
+        (
+          await db.query(
+            `select to_jsonb(s)-'category_id'-'category_name'-'step_id'-'step_name'-'steps_enabled' as data from public.sessions s where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual(legacySession);
+      expect(
+        (
+          await db.query(
+            `select to_jsonb(a)-'category_id'-'use_steps'-'created_by' as data from public.activities a where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual(legacyActivity);
+      expect(
+        (
+          await db.query(
+            `select category_id is null and category_name is null and step_id is null and step_name is null and not steps_enabled as honest_legacy from public.sessions where id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual([{ honest_legacy: true }]);
+      expect(
+        (
+          await db.query(
+            `select c.is_fallback and c.name='Uncategorized activities' and not a.use_steps as migrated from public.activities a join public.activity_categories c on c.id=a.category_id where a.id='60000000-0000-4000-8000-000000000001'`,
+          )
+        ).rows,
+      ).toEqual([{ migrated: true }]);
+      await db.exec(`begin;
+        delete from public.segments where session_id='60000000-0000-4000-8000-000000000001';
+        delete from public.sessions where id='60000000-0000-4000-8000-000000000001';
+        delete from public.profiles where id='60000000-0000-4000-8000-000000000001';
+        delete from public.products where id='60000000-0000-4000-8000-000000000001';
+        delete from public.activities where id='60000000-0000-4000-8000-000000000001';
+        commit;`);
+    }
     if (file.includes("employee_workflow_options")) {
       expect(
         (
@@ -62,13 +111,6 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
           )
         ).rows,
       ).toEqual([{ requires_design: true, requires_quantity: true }]);
-      await db.exec(`begin;
-        delete from public.segments where session_id='60000000-0000-4000-8000-000000000001';
-        delete from public.sessions where id='60000000-0000-4000-8000-000000000001';
-        delete from public.profiles where id='60000000-0000-4000-8000-000000000001';
-        delete from public.products where id='60000000-0000-4000-8000-000000000001';
-        delete from public.activities where id='60000000-0000-4000-8000-000000000001';
-        commit;`);
     }
     if (file.includes("position_access_and_pin_expiration")) {
       const migration =
@@ -118,5 +160,9 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/employee_workflow.sql", "utf8"),
   );
   expect(JSON.stringify(workflow)).toContain("PASS:");
+  const hierarchy = await db.exec(
+    readFileSync("supabase/tests/categories_steps_timeline.sql", "utf8"),
+  );
+  expect(JSON.stringify(hierarchy)).toContain("PASS:");
   await db.close();
 });

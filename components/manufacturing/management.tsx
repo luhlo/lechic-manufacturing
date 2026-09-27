@@ -18,9 +18,16 @@ import {
   permissionNames,
   type CachedState,
   type Row,
+  type Activity,
 } from "@/lib/manufacturing/types";
+import {
+  reportingDateTime,
+  reportingInstant,
+  reportingClock,
+} from "@/lib/manufacturing/reporting-time";
 import { localDate, normalize } from "@/lib/manufacturing/domain";
 import { Check, DataTable, Pick } from "./primitives";
+import { ActivityOrganization, ActivitySteps } from "./activity-organization";
 import { PositionAccess } from "./position-access";
 import { PinExpiration } from "./pin-expiration";
 import { EmployeeLoginSettings, PinDevices } from "./login-settings";
@@ -81,6 +88,9 @@ export function Management({
     setFormError("");
     const r: Record<string, unknown> = { active: true, ...row };
     if (page === "activities") {
+      r.category_id ??=
+        (c.activity_categories ?? []).find((c) => c.is_fallback)?.id ?? "";
+      r.use_steps ??= false;
       r.requires_design ??= true;
       r.requires_quantity ??= true;
       r.position_ids = c.activity_positions
@@ -96,12 +106,7 @@ export function Management({
       r.status ??= "assigned";
     }
     if (page === "kpi_targets") {
-      const now = new Date();
-      r.effective_from = new Date(
-        now.getTime() - now.getTimezoneOffset() * 60000,
-      )
-        .toISOString()
-        .slice(0, 16);
+      r.effective_from = reportingDateTime();
     }
     setEditing(r);
   };
@@ -222,15 +227,26 @@ export function Management({
       case "activities":
         return (
           <DataTable
-            headers={["Activity", "Positions", "Status", ""]}
+            headers={["Activity", "Category", "Positions", "Status", ""]}
             rows={filtered.map((r) => [
               <strong key="name">{r.name}</strong>,
+              find(c.activity_categories ?? [], r.category_id),
               c.activity_positions
                 .filter((x) => x.activity_id === r.id)
                 .map((x) => find(c.positions, x.position_id))
                 .join(", ") || "None assigned",
               status(r),
-              action(r),
+              <div className="login-actions" key="actions">
+                {action(r)}
+                {canEdit && (
+                  <ActivitySteps
+                    activity={r as Activity}
+                    state={state}
+                    api={api}
+                    refresh={refresh}
+                  />
+                )}
+              </div>,
             ])}
           />
         );
@@ -284,7 +300,7 @@ export function Management({
               find(c.activities, r.activity_id),
               r.product_id ? find(c.products, r.product_id) : "All designs",
               String(r.target_value),
-              new Date(String(r.effective_from)).toLocaleString(),
+              reportingClock(String(r.effective_from), true),
               status(r),
               action(r),
             ])}
@@ -384,6 +400,9 @@ export function Management({
           </button>
         )}
       </div>
+      {page === "activities" && (
+        <ActivityOrganization state={state} api={api} refresh={refresh} />
+      )}
       {page === "roles" ? (
         <Tabs defaultValue="roles">
           <TabsList>
@@ -461,9 +480,9 @@ export function Management({
                   const p = { ...editing };
                   if (
                     page === "activities" &&
-                    !(p.position_ids as string[])?.length
+                    (!p.category_id || !(p.position_ids as string[])?.length)
                   )
-                    throw Error("Choose at least one position.");
+                    throw Error("Choose a category and at least one position.");
                   if (
                     page === "assignments" &&
                     (!p.employee_id || !p.product_id)
@@ -472,9 +491,9 @@ export function Management({
                   if (page === "kpi_targets") {
                     if (!p.activity_id || Number(p.target_value) <= 0)
                       throw Error("Choose an activity and a positive target.");
-                    p.effective_from = new Date(
+                    p.effective_from = reportingInstant(
                       String(p.effective_from),
-                    ).toISOString();
+                    );
                   }
                   await api.manage(entity, p);
                   setEditing(null);
@@ -535,6 +554,18 @@ export function Management({
               {page === "activities" && (
                 <fieldset>
                   <legend>Employee workflow</legend>
+                  {pick("Category", "category_id", c.activity_categories ?? [])}
+                  <Check
+                    label="Use steps for this activity"
+                    checked={editing.use_steps === true}
+                    onChange={(v) => update("use_steps", v)}
+                  />
+                  {!state.context.workflow?.activity_steps_enabled && (
+                    <p className="muted tiny">
+                      Global activity steps are off. Configured steps are
+                      preserved.
+                    </p>
+                  )}
                   <Check
                     label="Requires design/product"
                     checked={editing.requires_design !== false}
@@ -568,6 +599,7 @@ export function Management({
                 records.some(
                   (r) =>
                     r.id !== editing.id &&
+                    r.category_id === editing.category_id &&
                     normalize(String(r.name)).includes(
                       normalize(String(editing.name ?? "")),
                     ) &&
@@ -622,7 +654,11 @@ export function Management({
                     "target_value",
                     "number",
                   )}
-                  {input("Effective from", "effective_from", "datetime-local")}
+                  {input(
+                    "Effective from (America/Chicago)",
+                    "effective_from",
+                    "datetime-local",
+                  )}
                 </>
               )}
               {page === "roles" && (

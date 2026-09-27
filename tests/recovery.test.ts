@@ -467,3 +467,56 @@ test("Finish publishes the durably stopped session before a slow network acknowl
   await finished;
   expect(s.state?.queue).toHaveLength(0);
 });
+
+test("offline events preserve step/category snapshots and original event timestamps through recovery", async () => {
+  const api = new Network(),
+    d = disk();
+  api.server = {
+    ...fresh(),
+    category_id: "original-category",
+    category_name: "Original category",
+    step_id: "original-step",
+    step_name: "Original step",
+    steps_enabled: true,
+  };
+  const store = new SessionStore(api, "u", d.storage);
+  await store.load();
+  api.online = false;
+  await store.command("transition", { kind: "WALKING" });
+  await store.command("finish");
+  const queued = structuredClone(store.state!.queue),
+    finish = store.state!.session!.ended_at;
+  const reopened = new SessionStore(api, "u", d.storage);
+  await reopened.load();
+  expect(reopened.state!.session).toMatchObject({
+    category_name: "Original category",
+    step_name: "Original step",
+    steps_enabled: true,
+    ended_at: finish,
+    status: "awaiting_quantity",
+  });
+  api.online = true;
+  await reopened.sync();
+  expect(api.server).toMatchObject({
+    category_name: "Original category",
+    step_name: "Original step",
+    steps_enabled: true,
+    ended_at: finish,
+  });
+  expect(api.server!.segments[0].ended_at).toBe(queued[0].at);
+  expect(api.server!.segments[1].ended_at).toBe(queued[1].at);
+  expect(reopened.state!.queue).toEqual([]);
+});
+test("an uncertain start retains its selected step in the durable command", async () => {
+  const api = new Network();
+  api.server = null;
+  const d = disk(),
+    store = new SessionStore(api, "u", d.storage);
+  await store.load();
+  api.uncertain = true;
+  await expect(store.start("a", "d", null, "selected-step")).rejects.toThrow(
+    "not confirmed",
+  );
+  expect(store.state!.queue[0].step_id).toBe("selected-step");
+  expect(d.map.get("u")!.queue[0].step_id).toBe("selected-step");
+});

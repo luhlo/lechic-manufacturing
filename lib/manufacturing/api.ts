@@ -25,6 +25,9 @@ export function clientFor(url: string, key: string) {
   });
 }
 export const emptyCatalog = (): Catalog => ({
+  activity_categories: [],
+  category_positions: [],
+  activity_steps: [],
   profiles: [],
   positions: [],
   activities: [],
@@ -74,15 +77,17 @@ export class Api {
         for (let page = 0; ; page++) {
           let query = this.client.from(name).select("*");
           const order =
-            name === "activity_positions"
-              ? "activity_id,position_id"
-              : name === "role_permissions"
-                ? "role_id,permission_id"
-                : name === "profile_roles"
-                  ? "profile_id,role_id"
-                  : name === "position_roles"
-                    ? "position_id,role_id"
-                    : "id";
+            name === "category_positions"
+              ? "category_id,position_id"
+              : name === "activity_positions"
+                ? "activity_id,position_id"
+                : name === "role_permissions"
+                  ? "role_id,permission_id"
+                  : name === "profile_roles"
+                    ? "profile_id,role_id"
+                    : name === "position_roles"
+                      ? "position_id,role_id"
+                      : "id";
           for (const column of order.split(",")) query = query.order(column);
           if (
             name === "assignments" &&
@@ -307,6 +312,7 @@ export class SessionStore {
     activityId: string,
     productId: string | null,
     assignmentId: string | null,
+    stepId: string | null = null,
   ) {
     return this.exclusive(async () => {
       this.state = (await this.disk.read(this.uid)) ?? this.state;
@@ -328,6 +334,7 @@ export class SessionStore {
         activity_id: activityId,
         product_id: productId,
         assignment_id: assignmentId,
+        step_id: stepId,
       };
       // Write the request before sending; an uncertain network result must retry the same UUID.
       const next = { ...this.state, queue: [...this.state.queue, command] };

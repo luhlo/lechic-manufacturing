@@ -1,3 +1,4 @@
+import { reportingDate } from "./reporting-time";
 import type {
   Activity,
   Assignment,
@@ -101,7 +102,7 @@ export function clockText(seconds: number) {
     .join(":");
 }
 export function localDate(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return reportingDate(date);
 }
 export function chooseKpi(
   targets: {

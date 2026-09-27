@@ -18,7 +18,24 @@ export interface Profile extends Row {
   position_id: string | null;
   active: boolean;
 }
+export interface ActivityCategory extends Row {
+  name: string;
+  active: boolean;
+  sort_order: number;
+  requires_design_default: boolean;
+  requires_quantity_default: boolean;
+  is_fallback?: boolean;
+}
+export interface ActivityStep extends Row {
+  activity_id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+}
 export interface Activity extends Row {
+  category_id?: string;
+  use_steps?: boolean;
+  created_by?: string | null;
   name: string;
   active: boolean;
   requires_design?: boolean;
@@ -47,6 +64,11 @@ export interface Segment {
   ended_at: string | null;
 }
 export interface Session extends Row {
+  category_id?: string | null;
+  category_name?: string | null;
+  step_id?: string | null;
+  step_name?: string | null;
+  steps_enabled?: boolean;
   employee_id: string;
   position_id: string | null;
   activity_id: string;
@@ -75,6 +97,7 @@ export interface Command {
   activity_id?: string;
   product_id?: string | null;
   assignment_id?: string | null;
+  step_id?: string | null;
   kind?: SegmentKind;
   quantity?: number;
 }
@@ -82,8 +105,15 @@ export interface Context {
   profile: Profile;
   permissions: string[];
   visibility: Visibility;
+  workflow?: {
+    employee_activity_creation: boolean;
+    activity_steps_enabled: boolean;
+  };
 }
 export interface Catalog {
+  activity_categories?: ActivityCategory[];
+  category_positions?: { category_id: string; position_id: string }[];
+  activity_steps?: ActivityStep[];
   profiles: Profile[];
   positions: Row[];
   activities: Activity[];
