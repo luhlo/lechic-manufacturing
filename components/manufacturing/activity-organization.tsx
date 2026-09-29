@@ -92,8 +92,9 @@ export function ActivityOrganization({ state, api, refresh }: Props) {
           Categories <span className="count">{categories.length}</span>
         </summary>
         <p className="muted">
-          Organize activities below. Empty-category positions only allow
-          activity creation; they never unlock other activities.
+          Employees see categories assigned to their position or containing
+          activities assigned to their position. Each activity keeps its own
+          position access.
         </p>
         {canManage && (
           <button
@@ -220,8 +221,13 @@ export function ActivityOrganization({ state, api, refresh }: Props) {
                 </fieldset>
                 <fieldset>
                   <legend>
-                    Allow these positions to use an empty category
+                    Assign category to positions
                   </legend>
+                  <p className="muted tiny">
+                    Shows this category in My Work, even when empty. Employees
+                    can add activities here when the creation switch is on.
+                    Existing activity assignments also make their category available.
+                  </p>
                   {state.catalog.positions.map((p) => (
                     <Check
                       key={p.id}

@@ -13,6 +13,7 @@ import {
 import type { Session } from "../lib/manufacturing/types";
 function fixture() {
   const c = emptyCatalog();
+  c.positions = [{ id: "p", name: "Own position", active: true }, { id: "other", name: "Other position", active: true }];
   c.activity_categories = [
     {
       id: "a",
@@ -96,16 +97,12 @@ function fixture() {
   return c;
 }
 test("category choices preserve position activity scope and require active categories", () => {
-  const c = fixture(),
-    acts = relevantActivities(c.activities, c.activity_positions, "p");
-  expect(availableCategories(c, acts, "p", false).map((c) => c.id)).toEqual([
-    "a",
-  ]);
-  expect(availableCategories(c, acts, "p", true).map((c) => c.id)).toEqual([
+  const c = fixture();
+  expect(availableCategories(c, "p").map((c) => c.id)).toEqual([
     "c",
     "a",
   ]);
-  expect(availableCategories(c, [], null, true)).toEqual([]);
+  expect(availableCategories(c, null)).toEqual([]);
   // Adding an explicit category link cannot add another position's activities.
   c.category_positions!.push({ category_id: "b", position_id: "p" });
   expect(
@@ -113,6 +110,30 @@ test("category choices preserve position activity scope and require active categ
       (a) => a.id,
     ),
   ).not.toContain("two");
+});
+test("full management catalogs still expose only the employee position's categories in My Work", () => {
+  const c = fixture();
+  expect(availableCategories(c, "p").map((c) => c.id)).toEqual(["c", "a"]);
+  expect(availableCategories(c, "other").map((c) => c.id)).toEqual(["b"]);
+  c.activities[0].active = false;
+  expect(availableCategories(c, "p").map((c) => c.id)).toEqual(["c"]);
+  c.category_positions = [];
+  expect(availableCategories(c, "p")).toEqual([]);
+});
+test("explicitly assigned empty categories stay visible independently of creation settings", () => {
+  const c = fixture();
+  c.activities = [];
+  expect(availableCategories(c, "p").map((c) => c.id)).toEqual(["c"]);
+  c.activity_categories!.find((c) => c.id === "c")!.active = false;
+  expect(availableCategories(c, "p")).toEqual([]);
+});
+test("missing or inactive positions cannot inherit choices from cached category or activity links", () => {
+  const c = fixture();
+  c.positions[0].active = false;
+  expect(availableCategories(c, "p")).toEqual([]);
+  expect(availableCategories(c, null)).toEqual([]);
+  c.positions = [];
+  expect(availableCategories(c, "p")).toEqual([]);
 });
 test("remembered category is employee specific, revalidated, and change-category clears only that employee", () => {
   const values = new Map<string, string>();
@@ -131,7 +152,7 @@ test("remembered category is employee specific, revalidated, and change-category
   expect(readCategory("Bob", storage)).toBe("b");
   expect(categoryStorageKey("Alice")).not.toBe(categoryStorageKey("Bob"));
   const c = fixture();
-  const accessible = availableCategories(c, [c.activities[0]], "p", false);
+  const accessible = availableCategories(c, "p");
   expect(validRememberedCategory("a", accessible)).toBe("a");
   expect(validRememberedCategory("b", accessible)).toBe("");
   expect(validRememberedCategory("d", accessible)).toBe("");

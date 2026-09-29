@@ -5,21 +5,23 @@ import type {
   Catalog,
   Session,
 } from "./types";
+import { relevantActivities } from "./domain";
 export function availableCategories(
   catalog: Catalog,
-  activities: Activity[],
   position: string | null,
-  allowCreation: boolean,
 ) {
+  // Management may load the entire catalog. My Work still uses only this
+  // employee's active position, never their broader administration access.
+  if (!catalog.positions.some((p) => p.id === position && p.active)) return [];
+  const activities = relevantActivities(catalog.activities, catalog.activity_positions, position);
   return (catalog.activity_categories ?? [])
     .filter(
       (c) =>
         c.active &&
         (activities.some((a) => a.category_id === c.id) ||
-          (allowCreation &&
-            (catalog.category_positions ?? []).some(
-              (p) => p.category_id === c.id && p.position_id === position,
-            ))),
+          (catalog.category_positions ?? []).some(
+            (p) => p.category_id === c.id && p.position_id === position,
+          )),
     )
     .sort(
       (a, b) =>

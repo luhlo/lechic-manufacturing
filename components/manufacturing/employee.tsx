@@ -25,6 +25,7 @@ import {
   reportingDateLabel,
 } from "@/lib/manufacturing/reporting-time";
 import { SessionStore } from "@/lib/manufacturing/api";
+import { WorkChoices } from "./work-choices";
 import {
   clockText,
   currentAssignments,
@@ -126,9 +127,7 @@ export function Employee({
     : null;
   const categories = availableCategories(
     state.catalog,
-    acts,
     positionId,
-    allowCreation,
   );
   const selectedCategory = validRememberedCategory(category, categories);
   const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
@@ -474,23 +473,11 @@ export function Employee({
             <span>{reportingDateLabel(now)}</span>
           </div>
           <h1>Choose a category.</h1>
-          <div className="activity-grid">
-            {categories.map((c) => (
-              <button
-                className="activity-tile"
-                key={c.id}
-                disabled={blocked}
-                onClick={() => chooseCategory(c.id)}
-              >
-                <strong>{c.name}</strong>
-                <ArrowRight size={23} />
-              </button>
-            ))}
-          </div>
+          <WorkChoices items={categories} label="categories" disabled={blocked} onChoose={chooseCategory} />
           {!categories.length && (
             <p className="empty">
-              Your manager needs to link activities to your active position and
-              category.
+              No categories are assigned to your position yet. Ask your manager
+              to assign a category or an activity.
             </p>
           )}
         </>
@@ -509,21 +496,9 @@ export function Employee({
           {!selected ? (
             <>
               <h1>What are you doing?</h1>
-              <div className="activity-grid">
-                {categoryActs.map((a) => (
-                  <button
-                    className="activity-tile"
-                    key={a.id}
-                    disabled={blocked}
-                    onClick={() => resetSelection(a.id)}
-                  >
-                    <strong>{a.name}</strong>
-                    <ArrowRight size={23} />
-                  </button>
-                ))}
-              </div>
+              <WorkChoices key={selectedCategory} items={categoryActs} label="activities" disabled={blocked} onChoose={resetSelection} />
               {!categoryActs.length && (
-                <p className="empty">No activities in this category yet.</p>
+                <p className="empty">No activities assigned to you in this category yet.{allowCreation ? " Add your first activity below." : " Ask your manager to add one."}</p>
               )}
               {allowCreation &&
                 (!creating ? (
@@ -553,11 +528,12 @@ export function Employee({
                         setCreateNote(
                           result.existing
                             ? "Selected the existing activity."
-                            : "Activity saved and selected.",
+                            : `Activity saved under ${categoryName} and selected.`,
                         );
                       });
                     }}
                   >
+                    <p className="muted">Saving under <strong>{categoryName}</strong>.</p>
                     <label className="field">
                       Activity name
                       <input

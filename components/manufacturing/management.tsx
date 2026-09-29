@@ -70,6 +70,7 @@ export function Management({
     api, state, page === "assignments" && canEdit,
   );
   const [query, setQuery] = useState(""),
+    [categoryFilter, setCategoryFilter] = useState(""),
     [editing, setEditing] = useState<Record<string, unknown> | null>(null),
     [saving, setSaving] = useState(false),
     [formError, setFormError] = useState(""),
@@ -89,7 +90,9 @@ export function Management({
   const records = (
     (c as unknown as Record<string, Row[]>)[entity] ?? []
   ).filter((r) => page !== "roles" || !r.managed_position_id);
+  const selectedCategoryFilter = (c.activity_categories ?? []).some((category) => category.id === categoryFilter) ? categoryFilter : "";
   const filtered = records.filter((r) =>
+    (page !== "activities" || !selectedCategoryFilter || r.category_id === selectedCategoryFilter) &&
     normalize(JSON.stringify(r)).includes(normalize(query)),
   );
   const update = (key: string, value: unknown) =>
@@ -99,7 +102,7 @@ export function Management({
     const r: Record<string, unknown> = { active: true, ...row };
     if (page === "activities") {
       r.category_id ??=
-        (c.activity_categories ?? []).find((c) => c.is_fallback)?.id ?? "";
+        selectedCategoryFilter || (c.activity_categories ?? []).find((c) => c.is_fallback)?.id || "";
       r.use_steps ??= false;
       r.requires_design ??= true;
       r.requires_quantity ??= true;
@@ -450,7 +453,16 @@ export function Management({
         </Tabs>
       ) : (
         <>
-          <div className="table-toolbar">
+          <div className={`table-toolbar${page === "activities" ? " activity-toolbar" : ""}`}>
+            {page === "activities" && (
+              <Pick
+                label="Filter by category"
+                value={selectedCategoryFilter}
+                onChange={setCategoryFilter}
+                options={options([...(c.activity_categories ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)))}
+                empty="All categories"
+              />
+            )}
             <label className="search-box">
               <Search size={18} />
               <input
@@ -464,7 +476,7 @@ export function Management({
                 onChange={(e) => setQuery(e.target.value)}
               />
             </label>
-            <span className="muted">{filtered.length} records</span>
+            <span className="muted" role="status">{filtered.length} records</span>
           </div>
           {table()}
         </>
