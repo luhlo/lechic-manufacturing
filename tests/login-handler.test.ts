@@ -563,3 +563,43 @@ test("expired PIN has an explicit recovery message and never mints a session", a
   expect((await r.json()).error).toContain("Your PIN has expired.");
   expect(calls).toHaveLength(1);
 });
+
+describe("remote PIN device unlock", () => {
+  const id = "90000000-0000-4000-8000-000000000020";
+  test("uses the verified password identity and device ID without needing or returning a device secret", async () => {
+    const unlocked = { id, name: "Remote phone", locked: false, expires_at: "2026-12-01" };
+    const { handler, calls } = fixture((c) => c.path.endsWith("/login_gateway") ? response(unlocked) : undefined);
+    const result = await handler(request({ action: "unlock_device", id, actor: userId, device_token: deviceToken, permissions: ["*"] }, token()));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual(unlocked);
+    expect(calls.map(c => c.path)).toEqual(["/auth/v1/user", "/rest/v1/rpc/login_gateway"]);
+    expect(calls[1].body).toEqual({ action: "unlock_device", payload: { id }, actor: actorId });
+    expect(JSON.stringify(calls)).not.toContain(deviceToken);
+  });
+  test.each(["recovery", "otp", "magiclink"])("denies unlock from a %s session", async (method) => {
+    const { handler, calls } = fixture();
+    const result = await handler(request({ action: "unlock_device", id }, token(method)));
+    expect(result.status).toBe(403);
+    expect(calls).toHaveLength(1);
+  });
+  test("denies invalid authentication before the gateway", async () => {
+    const { handler, calls } = fixture(c => c.path === "/auth/v1/user" ? response({}, 401) : undefined);
+    expect((await handler(request({ action: "unlock_device", id, actor: actorId }))).status).toBe(401);
+    expect(calls).toHaveLength(1);
+  });
+  test.each([undefined, "", "not-a-uuid"])("rejects invalid device identifier %s", async (id) => {
+    const { handler, calls } = fixture();
+    expect((await handler(request({ action: "unlock_device", id }, token()))).status).toBe(400);
+    expect(calls).toHaveLength(1);
+  });
+  test("preserves current permission denial for password-authenticated users", async () => {
+    const { handler } = fixture(c => c.path.endsWith("/login_gateway") ? response({ code: "42501" }, 403) : undefined);
+    expect((await handler(request({ action: "unlock_device", id }, token()))).status).toBe(403);
+  });
+  test("reports expired/removed device without claiming success", async () => {
+    const { handler } = fixture(c => c.path.endsWith("/login_gateway") ? response({ code: "22023" }, 400) : undefined);
+    const result = await handler(request({ action: "unlock_device", id }, token()));
+    expect(result.status).toBe(409);
+    expect((await result.json()).error).toContain("no longer approved or has expired");
+  });
+});

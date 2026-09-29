@@ -168,5 +168,9 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/assignment_hierarchy.sql", "utf8"),
   );
   expect(JSON.stringify(assignmentHierarchy)).toContain("PASS: A-P");
+  const unlockDevices = await db.exec(
+    readFileSync("supabase/tests/unlock_pin_devices.sql", "utf8"),
+  );
+  expect(JSON.stringify(unlockDevices)).toContain("PASS: remote PIN unlock");
   await db.close();
 });

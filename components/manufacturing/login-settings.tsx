@@ -288,7 +288,8 @@ export function PinDevices({ client }: { client: SupabaseClient }) {
     [name, setName] = useState(() => savedPinDevice()?.name ?? "");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [unlocking, setUnlocking] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
       setDevices(
@@ -318,7 +319,8 @@ export function PinDevices({ client }: { client: SupabaseClient }) {
       <p className="muted">
         Approve each studio browser once. Employees can then enter just their
         four-digit PIN. Approval lasts 90 days. Five incorrect PIN attempts lock
-        the device until a manager approves it again.
+        the device. OM can unlock an approved device here after signing in with
+        a password.
       </p>
       <form
         className="form-stack"
@@ -380,16 +382,43 @@ export function PinDevices({ client }: { client: SupabaseClient }) {
               {d.id === local?.id ? " (this device)" : ""}
             </strong>
             <p className="muted tiny">
-              {d.locked ? "Locked · approve again on that device" : "Approved"}{" "}
+              {d.locked ? "Locked · ready to unlock" : "Approved"}{" "}
               · expires {new Date(d.expires_at).toLocaleDateString()}
             </p>
           </div>
+          <div className="login-actions">
+          {d.locked && (
+            <button className="button primary" disabled={busy}
+              aria-label={`Unlock ${d.name}`}
+              onClick={async () => {
+                setBusy(true);
+                setUnlocking(d.id);
+                setError("");
+                setNotice("");
+                try {
+                  const unlocked = await loginRequest<DeviceStatus>(client, {
+                    action: "unlock_device", id: d.id,
+                  });
+                  setDevices((rows) => rows.map((row) => row.id === unlocked.id ? unlocked : row));
+                  setNotice(`${unlocked.name} is unlocked. Employees can try their PIN again on that device.`);
+                  await load();
+                } catch (e) {
+                  setError(message(e));
+                } finally {
+                  setBusy(false);
+                  setUnlocking(null);
+                }
+              }}>
+              {unlocking === d.id ? "Unlocking…" : "Unlock"}
+            </button>
+          )}
           <button
             className="button"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
               setError("");
+              setNotice("");
               try {
                 await loginRequest(client, {
                   action: "revoke_device",
@@ -409,12 +438,15 @@ export function PinDevices({ client }: { client: SupabaseClient }) {
           >
             Remove approval
           </button>
+          </div>
         </div>
       ))}
       <p className="muted tiny">
         Removing approval prevents future PIN sign-ins. It does not end an
         employee’s existing session. Use a password to manage usernames, PINs
-        and approved devices.
+        and approved devices. Unlocking keeps the device’s existing approval
+        expiration date. Expired or removed devices must be approved again on
+        that device.
       </p>
     </div>
   );

@@ -132,6 +132,11 @@ export function createLoginHandler(
               403,
               "You do not have permission to manage these login settings.",
             );
+          if (operation === "unlock_device" && r.data.code === "22023")
+            throw new LoginError(
+              409,
+              "This device is no longer approved or has expired. Approve it again on that device.",
+            );
           throw new LoginError(
             400,
             "Could not save login settings. Check the employee account and try again.",
@@ -228,7 +233,7 @@ export function createLoginHandler(
         if (record.error === "device_locked")
           throw new LoginError(
             429,
-            "PIN sign-in is locked on this device. Ask a manager to sign in with a password and approve it again.",
+            "PIN sign-in is locked on this device. Ask your Operations Manager to unlock it in Settings → PIN sign-in devices.",
           );
         if (record.error === "device_unapproved")
           throw new LoginError(
@@ -285,6 +290,7 @@ export function createLoginHandler(
           "devices",
           "approve_device",
           "revoke_device",
+          "unlock_device",
           "create_account",
         ].includes(action)
       )
@@ -486,10 +492,13 @@ export function createLoginHandler(
           token,
         });
       }
+      if (action === "unlock_device" &&
+        (typeof body.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id)))
+        throw new LoginError(400, "Choose a locked PIN sign-in device.");
       return respond(
         await gateway(
           action,
-          action === "revoke_device" ? { id: body.id } : {},
+          action === "revoke_device" || action === "unlock_device" ? { id: body.id } : {},
           actor,
         ),
       );
