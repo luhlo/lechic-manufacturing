@@ -6,6 +6,7 @@ import type {
   Session,
   Command,
   CachedState,
+  AssignmentRecipients,
 } from "./types";
 import { applyCommand, localDate, normalize } from "./domain";
 import { allowed } from "./types";
@@ -57,6 +58,9 @@ export class Api {
     const { data, error } = await this.client.rpc(name, args);
     if (error) throw Object.assign(Error(error.message), { code: error.code });
     return data as T;
+  }
+  assignmentRecipients() {
+    return this.rpc<AssignmentRecipients>("assignment_recipients");
   }
   async catalog(context?: Context): Promise<Catalog> {
     const c = emptyCatalog();

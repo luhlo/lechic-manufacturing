@@ -56,6 +56,19 @@ export interface Assignment extends Row {
   notes: string;
   completed_quantity?: number;
 }
+export interface AssignmentRecipient {
+  id: string;
+  name: string;
+  position_id: string | null;
+  position_name: string | null;
+  position_active: boolean | null;
+  assignment_level: number | null;
+}
+export interface AssignmentRecipients {
+  can_manage: boolean;
+  reason: string | null;
+  recipients: AssignmentRecipient[];
+}
 export interface Segment {
   id: string;
   session_id: string;

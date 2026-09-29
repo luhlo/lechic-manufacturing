@@ -11,6 +11,9 @@ insert into public.products(id,name,sku) values('10000000-0000-4000-8000-0000000
 insert into public.assignments(id,employee_id,product_id,work_date,target_quantity,assigned_by) values('10000000-0000-4000-8000-000000000040','10000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000030',current_date,30,'10000000-0000-4000-8000-000000000001');
 insert into public.kpi_targets(id,activity_id,product_id,target_value,effective_from,changed_by) values('10000000-0000-4000-8000-000000000060','10000000-0000-4000-8000-000000000020',null,18,now()-interval '1 day','10000000-0000-4000-8000-000000000001'),('10000000-0000-4000-8000-000000000061','10000000-0000-4000-8000-000000000020','10000000-0000-4000-8000-000000000030',22,now()-interval '1 day','10000000-0000-4000-8000-000000000001');
 
+-- Synthetic rank configuration for the ordinary assigner regression.
+update public.positions set assignment_level=1 where name like 'QA %';
+
 -- Restricted capabilities are tested against the same RPC used by the app.
 insert into public.roles(id,name) values('10000000-0000-4000-8000-000000000050','QA limited manager'),('10000000-0000-4000-8000-000000000051','QA assigner'),('10000000-0000-4000-8000-000000000052','QA analyst'),('10000000-0000-4000-8000-000000000053','QA KPI manager');
 insert into public.role_permissions values('10000000-0000-4000-8000-000000000050','positions.manage'),('10000000-0000-4000-8000-000000000050','employees.manage'),('10000000-0000-4000-8000-000000000051','assignments.manage'),('10000000-0000-4000-8000-000000000052','analytics.view'),('10000000-0000-4000-8000-000000000053','kpis.manage');

@@ -31,6 +31,8 @@ import { ActivityOrganization, ActivitySteps } from "./activity-organization";
 import { PositionAccess } from "./position-access";
 import { PinExpiration } from "./pin-expiration";
 import { EmployeeLoginSettings, PinDevices } from "./login-settings";
+import { useAssignmentRecipients } from "./use-assignment-recipients";
+import { assignmentEditable, hierarchyLabel, positionPermissions, recipientAllowed } from "@/lib/manufacturing/assignment-access";
 const titles: Record<string, string> = {
   profiles: "Employees",
   positions: "Positions",
@@ -63,12 +65,20 @@ export function Management({
 }) {
   const c = state.catalog;
   const canEdit = canManagePage(state.context.permissions, page);
+  const canManageAccess = allowed(state.context.permissions, "permissions.manage");
+  const { scope: recipients, reloadRecipients } = useAssignmentRecipients(
+    api, state, page === "assignments" && canEdit,
+  );
   const [query, setQuery] = useState(""),
     [editing, setEditing] = useState<Record<string, unknown> | null>(null),
     [saving, setSaving] = useState(false),
     [formError, setFormError] = useState(""),
     [assignmentScope, setAssignmentScope] = useState("profile_roles");
   const entity = page === "roles" ? "roles" : page;
+  const currentAssignment = c.assignments.find((a) => a.id === editing?.id);
+  const assignmentSaveAllowed = recipientAllowed(recipients, editing?.employee_id) &&
+    (!editing?.id || (!!currentAssignment &&
+      assignmentEditable(recipients, currentAssignment.employee_id, editing.employee_id)));
   const find = (list: Row[], id: unknown) =>
     list.find((x) => x.id === id)?.name ?? "—";
   const options = (list: Row[]) =>
@@ -102,6 +112,7 @@ export function Management({
         .filter((x) => x.role_id === row?.id)
         .map((x) => x.permission_id);
     if (page === "assignments") {
+      reloadRecipients();
       r.work_date ??= localDate();
       r.status ??= "assigned";
     }
@@ -159,7 +170,7 @@ export function Management({
     </span>
   );
   const action = (r: Row) =>
-    canEdit ? (
+    canEdit && (page !== "assignments" || assignmentEditable(recipients, r.employee_id)) ? (
       <button
         className="edit-button"
         aria-label={`Edit ${r.name ?? find(c.products, r.product_id)}`}
@@ -168,7 +179,7 @@ export function Management({
         <Pencil size={15} />
         Edit
       </button>
-    ) : null;
+    ) : page === "assignments" && canEdit ? <span className="muted tiny">View only</span> : null;
   const table = () => {
     switch (page) {
       case "profiles":
@@ -205,9 +216,11 @@ export function Management({
       case "positions":
         return (
           <DataTable
-            headers={["Position", "Employees", "Status", ""]}
+            headers={["Position", "Hierarchy level", ...(canManageAccess ? ["Can assign work"] : []), "Employees", "Status", ""]}
             rows={filtered.map((r) => [
               <strong key="name">{r.name}</strong>,
+              hierarchyLabel(r.assignment_level),
+              ...(canManageAccess ? [r.active !== false && allowed(positionPermissions(c, r.id), "assignments.manage") ? "Yes" : "No"] : []),
               c.profiles.filter((p) => p.position_id === r.id).length,
               status(r),
               <div className="login-actions" key="actions">
@@ -394,12 +407,19 @@ export function Management({
           </p>
         </div>
         {canEdit && (
-          <button className="button primary" onClick={() => edit()}>
+          <button className="button primary" onClick={() => edit()}
+            disabled={page === "assignments" && (!recipients?.can_manage || !recipients.recipients.length)}>
             <Plus size={18} />
             Add {singular[page]}
           </button>
         )}
       </div>
+      {page === "assignments" && canEdit && (!recipients || recipients.reason || !recipients.recipients.length) && (
+        <p className="notice" role="status">
+          {!recipients ? "Checking assignment access…" : recipients.reason ??
+            "No eligible employees. Ask your Operations Manager to review active employees, positions and hierarchy levels."}
+        </p>
+      )}
       {page === "activities" && (
         <ActivityOrganization state={state} api={api} refresh={refresh} />
       )}
@@ -478,6 +498,11 @@ export function Management({
                 setFormError("");
                 try {
                   const p = { ...editing };
+                  if (!canEdit) throw Error("Your management access has changed. Contact your Operations Manager.");
+                  if (page === "positions") {
+                    if (canManageAccess) p.assignment_level = p.assignment_level === "" || p.assignment_level == null ? null : String(p.assignment_level);
+                    else delete p.assignment_level;
+                  }
                   if (
                     page === "activities" &&
                     (!p.category_id || !(p.position_ids as string[])?.length)
@@ -488,6 +513,8 @@ export function Management({
                     (!p.employee_id || !p.product_id)
                   )
                     throw Error("Choose an employee and design.");
+                  if (page === "assignments" && !assignmentSaveAllowed)
+                    throw Error("Assignment access has changed. Review the eligible employees before saving.");
                   if (page === "kpi_targets") {
                     if (!p.activity_id || Number(p.target_value) <= 0)
                       throw Error("Choose an activity and a positive target.");
@@ -501,6 +528,10 @@ export function Management({
                   toast.success("Saved");
                 } catch (e) {
                   setFormError(message(e));
+                  if (page === "assignments") {
+                    await refresh();
+                    reloadRecipients();
+                  }
                 } finally {
                   setSaving(false);
                 }
@@ -525,6 +556,7 @@ export function Management({
                 <>
                   {input("Email used to sign in", "email", "email")}
                   {pick("Position", "position_id", c.positions)}
+                  {!canManageAccess && <p className="muted tiny">Changing assignment authority requires permission-management access.</p>}
                   {input(
                     "External employee ID (optional)",
                     "external_employee_id",
@@ -548,6 +580,21 @@ export function Management({
                     create the employee’s account and assign a username and PIN.
                     Access is inherited from their position.
                   </p>
+                </>
+              )}
+              {page === "positions" && (
+                <>
+                  <label className="field">
+                    Assignment hierarchy level
+                    <input type="number" min="1" max="2147483647" step="1"
+                      placeholder="Not configured" disabled={!canManageAccess}
+                      value={String(editing.assignment_level ?? "")}
+                      onChange={(e) => update("assignment_level", e.target.value)} />
+                  </label>
+                  <p className="muted tiny">Higher numbers have more authority. With assignment permission, this position can assign work to employees at the same level or below.</p>
+                  <p className="muted tiny">Leave blank for Not configured. {canManageAccess
+                    ? `Can assign work: ${editing.active !== false && editing.id && allowed(positionPermissions(c, String(editing.id)), "assignments.manage") ? "Yes" : "No"}. Configure that permission separately in App access.`
+                    : "Changing hierarchy levels requires permission-management access."}</p>
                 </>
               )}
               {page === "products" && input("SKU", "sku")}
@@ -612,7 +659,21 @@ export function Management({
                 )}
               {page === "assignments" && (
                 <>
-                  {pick("Employee", "employee_id", c.profiles)}
+                  <Pick label="Employee"
+                    value={recipientAllowed(recipients, editing.employee_id) ? String(editing.employee_id) : ""}
+                    // Radix can emit an empty native-select change while options refresh.
+                    // Keep the draft ID; eligibility separately invalidates stale recipients.
+                    onChange={(id) => { if (recipientAllowed(recipients, id)) update("employee_id", id); }}
+                    empty={!canEdit ? "Assignment management unavailable" : !recipients ? "Checking access…" : recipients.recipients.length ? "Choose eligible employee…" : "No eligible employees"}
+                    options={(recipients?.recipients ?? []).map((r) => ({ value: r.id,
+                      label: `${r.name} · ${r.position_name ?? "No position"}${r.position_active === false ? " (inactive)" : ""} · ${hierarchyLabel(r.assignment_level)}` }))} />
+                  {recipients?.reason && <p className="notice" role="status">{recipients.reason}</p>}
+                  {!canEdit && <p className="notice" role="alert">Assignment management access has changed. Contact your Operations Manager. Your draft has not been saved.</p>}
+                  {recipients && !recipients.reason && !recipients.recipients.length && <p className="notice">No eligible employees. Ask your Operations Manager to review position hierarchy levels.</p>}
+                  {recipients && editing.employee_id && !recipientAllowed(recipients, editing.employee_id) ?
+                    <p className="notice" role="alert">Assignment access has changed. The selected employee is no longer eligible. Your other inputs are preserved.</p> : null}
+                  {recipients && editing.id && (!currentAssignment || !assignmentEditable(recipients, currentAssignment.employee_id)) ?
+                    <p className="notice" role="alert">You can no longer modify this assignment under the current hierarchy, including reassigning or cancelling it.</p> : null}
                   {pick("Design", "product_id", c.products)}
                   <div className="form-row">
                     {input("Work date", "work_date", "date")}
@@ -691,7 +752,7 @@ export function Management({
                   {formError}
                 </p>
               )}
-              <button className="button primary" disabled={saving}>
+              <button className="button primary" disabled={saving || !canEdit || (page === "assignments" && !assignmentSaveAllowed)}>
                 {saving ? "Saving…" : "Save changes"}
                 <ArrowRight size={18} />
               </button>

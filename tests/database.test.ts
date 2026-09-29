@@ -164,5 +164,9 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/categories_steps_timeline.sql", "utf8"),
   );
   expect(JSON.stringify(hierarchy)).toContain("PASS:");
+  const assignmentHierarchy = await db.exec(
+    readFileSync("supabase/tests/assignment_hierarchy.sql", "utf8"),
+  );
+  expect(JSON.stringify(assignmentHierarchy)).toContain("PASS: A-P");
   await db.close();
 });

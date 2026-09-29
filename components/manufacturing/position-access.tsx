@@ -9,6 +9,7 @@ import {
 import { type Api, message } from "@/lib/manufacturing/api";
 import { allowed, type CachedState, type Row } from "@/lib/manufacturing/types";
 import { Check } from "./primitives";
+import { positionPermissions } from "@/lib/manufacturing/assignment-access";
 const modules = [
   ["assignments", "Assignments"],
   ["kpis", "KPIs"],
@@ -61,24 +62,7 @@ export function PositionAccess({
         className="edit-button"
         aria-label={`App access for ${position.name}`}
         onClick={() => {
-          const roles = new Set(
-            state.catalog.position_roles
-              .filter(
-                (r) =>
-                  r.position_id === position.id &&
-                  state.catalog.roles.some(
-                    (role) => role.id === r.role_id && role.active,
-                  ),
-              )
-              .map((r) => r.role_id),
-          );
-          setPermissions([
-            ...new Set(
-              state.catalog.role_permissions
-                .filter((r) => roles.has(r.role_id))
-                .map((r) => r.permission_id),
-            ),
-          ]);
+          setPermissions(positionPermissions(state.catalog, position.id));
           setError("");
           setOpen(true);
         }}
