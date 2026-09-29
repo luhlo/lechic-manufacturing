@@ -31,6 +31,8 @@ import { ActivityOrganization, ActivitySteps } from "./activity-organization";
 import { PositionAccess } from "./position-access";
 import { PinExpiration } from "./pin-expiration";
 import { EmployeeLoginSettings, PinDevices } from "./login-settings";
+import { DesignImage } from "./design-image";
+import { DesignSheet } from "./design-sheet";
 import { useAssignmentRecipients } from "./use-assignment-recipients";
 import { assignmentEditable, hierarchyLabel, positionPermissions, recipientAllowed } from "@/lib/manufacturing/assignment-access";
 const titles: Record<string, string> = {
@@ -271,7 +273,7 @@ export function Management({
           <DataTable
             headers={["Design / style", "SKU", "Status", ""]}
             rows={filtered.map((r) => [
-              <strong key="name">{r.name}</strong>,
+              <span className="design-table-name" key="name"><DesignImage url={typeof r.image_url === "string" ? r.image_url : null} name={String(r.name)} /><strong>{r.name}</strong></span>,
               <code key="sku">{String(r.sku)}</code>,
               status(r),
               action(r),
@@ -426,6 +428,7 @@ export function Management({
       {page === "activities" && (
         <ActivityOrganization state={state} api={api} refresh={refresh} />
       )}
+      {page === "products" && canEdit && <DesignSheet api={api} refresh={refresh} />}
       {page === "roles" ? (
         <Tabs defaultValue="roles">
           <TabsList>
@@ -610,6 +613,7 @@ export function Management({
                 </>
               )}
               {page === "products" && input("SKU", "sku")}
+              {page === "products" && <><label className="field">Image URL (optional)<input type="url" maxLength={2048} placeholder="https://…" value={String(editing.image_url ?? "")} onChange={(e) => update("image_url", e.target.value)} /></label><p className="muted tiny">Leave blank to show no image. Use an HTTPS link that opens without signing in.</p></>}
               {page === "activities" && (
                 <fieldset>
                   <legend>Employee workflow</legend>

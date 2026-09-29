@@ -23,6 +23,7 @@ const context: Context = {
   },
   permissions: ["my_work.access"],
   visibility: "OFF",
+  workflow: {employee_activity_creation:false,activity_steps_enabled:true},
 };
 const fresh = (): Session => ({
   id: "s",
@@ -60,8 +61,17 @@ class Network extends Api {
   constructor() {
     super(null as never);
   }
+  catalogData = {
+    ...emptyCatalog(),
+    positions: [{id:"p",name:"p",active:true}],
+    activity_categories: [{id:"cat",name:"Category",active:true,sort_order:0,requires_design_default:true,requires_quantity_default:true}],
+    activities: [{id:"a",name:"a",active:true,category_id:"cat",requires_design:true,requires_quantity:true,use_steps:true}],
+    activity_positions: [{activity_id:"a",position_id:"p"}],
+    activity_steps: [{id:"selected-step",activity_id:"a",name:"Step",active:true,sort_order:0}],
+    products: [{id:"d",name:"d",sku:"D",active:true}],
+  };
   async catalog() {
-    return emptyCatalog();
+    return structuredClone(this.catalogData);
   }
   async rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
     if (!this.online) throw TypeError("Failed to fetch");
@@ -76,8 +86,10 @@ class Network extends Api {
       if (c.action === "start") {
         this.server = {
           ...fresh(),
-          id: c.session_id,
-          segments: [{ ...fresh().segments[0], session_id: c.session_id }],
+          id: c.session_id, started_at:c.at, product_id:c.product_id??null,
+          requires_design:this.catalogData.activities[0].requires_design,
+          requires_quantity:this.catalogData.activities[0].requires_quantity,
+          segments: [{ ...fresh().segments[0], id:c.request_id, session_id: c.session_id, started_at:c.at }],
         };
       } else {
         if (c.expected_revision !== this.server?.revision)
@@ -146,7 +158,8 @@ test("uncertain start is durable and reuses the original session ID", async () =
     s = new SessionStore(api, "u", d.storage);
   await s.load();
   api.uncertain = true;
-  await expect(s.start("a", "d", null)).rejects.toThrow("not confirmed");
+  await s.start("a", "d", null);
+  expect(s.state?.session?.status).toBe("running");
   const sid = s.state?.queue[0].session_id;
   const reopened = new SessionStore(api, "u", d.storage);
   await reopened.load();
@@ -412,7 +425,8 @@ test("quantity-free offline finish survives reopening and an uncertain replay wi
   expect(reopened.state?.queue).toHaveLength(3);
   expect(reopened.state?.session?.ended_at).toBe(endedAt);
   await reopened.clearCompleted();
-  expect(reopened.state?.session?.status).toBe("completed");
+  expect(reopened.state?.session).toBeNull();
+  expect(reopened.state?.pendingSessions?.[0].status).toBe("completed");
   api.online = true;
   api.uncertain = true;
   await reopened.sync();
@@ -426,6 +440,7 @@ test("quantity-free offline finish survives reopening and an uncertain replay wi
 
 test("no-design start sends NULL instead of inventing a product", async () => {
   const api = new Network();
+  api.catalogData.activities[0].requires_design = false;
   api.server = null;
   const rpc = api.rpc.bind(api),
     commands: Command[] = [];
@@ -514,9 +529,72 @@ test("an uncertain start retains its selected step in the durable command", asyn
     store = new SessionStore(api, "u", d.storage);
   await store.load();
   api.uncertain = true;
-  await expect(store.start("a", "d", null, "selected-step")).rejects.toThrow(
-    "not confirmed",
-  );
+  await store.start("a", "d", null, "selected-step");
   expect(store.state!.queue[0].step_id).toBe("selected-step");
   expect(d.map.get("u")!.queue[0].step_id).toBe("selected-step");
+});
+
+test("multiple offline starts, quantities and time-only work survive reload and sync in order", async () => {
+  const api = new Network(), d = disk(); api.server = null;
+  const store = new SessionStore(api,"u",d.storage); await store.load(); api.online=false;
+  await store.start("a","d",null);
+  const first=store.state!.session!.id;
+  await store.command("transition",{kind:"WALKING"});
+  await store.command("finish"); const firstEnd=store.state!.session!.ended_at;
+  await store.command("complete",{quantity:0}); await store.clearCompleted();
+  expect(store.state!.pendingSessions).toHaveLength(1);
+  expect(store.state!.pendingSessions![0].quantity).toBe(0);
+  const reopened=new SessionStore(api,"u",d.storage); await reopened.load();
+  await reopened.start("a","d",null); const second=reopened.state!.session!.id;
+  expect(second).not.toBe(first);
+  await reopened.command("finish"); await reopened.command("complete",{quantity:7});
+  const commands=structuredClone(reopened.state!.queue);
+  api.online=true; await reopened.refresh();
+  expect(reopened.state!.queue).toEqual([]);
+  expect(reopened.state!.pendingSessions).toEqual([]);
+  expect(reopened.state!.session).toMatchObject({id:second,quantity:7,status:"completed"});
+  const firstReceipt=api.receipts.get(commands.findLast(c=>c.session_id===first)!.request_id)!;
+  expect(firstReceipt).toMatchObject({quantity:0,ended_at:firstEnd,status:"completed"});
+  expect(api.receipts.size).toBe(commands.length);
+});
+test("dismissing completed offline work never resurrects that receipt during background sync", async () => {
+  const api=new Network(), d=disk(), store=new SessionStore(api,"u",d.storage);
+  api.server=null; await store.load(); api.online=false;
+  await store.start("a","d",null); await store.command("finish"); await store.command("complete",{quantity:3});
+  await store.clearCompleted(); api.online=true; await store.sync();
+  expect(store.state!.session).toBeNull(); expect(store.state!.pendingSessions).toEqual([]);
+  expect(store.state!.queue).toEqual([]);
+});
+test("multi-session replay can lose an acknowledgement and retry without duplication or replacing the later timer", async () => {
+  const api=new Network(), d=disk(), store=new SessionStore(api,"u",d.storage);
+  api.server=null; await store.load(); api.online=false;
+  await store.start("a","d",null); await store.command("finish"); await store.command("complete",{quantity:4});
+  await store.clearCompleted(); await store.start("a","d",null);
+  const current=store.state!.session!.id, count=store.state!.queue.length;
+  api.online=true; api.uncertain=true; await store.sync();
+  expect(store.state!.session!.id).toBe(current); expect(store.state!.queue).toHaveLength(count);
+  const reopened=new SessionStore(api,"u",d.storage); await reopened.load();
+  expect(reopened.state!.session!.id).toBe(current); expect(reopened.state!.queue).toEqual([]);
+  expect(api.receipts.size).toBe(count);
+});
+test("offline starts cannot use inactive or unassigned cached catalog records", async () => {
+  const api=new Network(),store=new SessionStore(api,"u",disk().storage); api.server=null;
+  await store.load(); api.online=false;
+  store.state!.catalog.activity_positions=[];
+  // Persist catalog change through refresh storage setup, as a revoked cached catalog would be.
+  const d=disk(); await d.storage.write("u",store.state!);
+  const reopened=new SessionStore(api,"u",d.storage); await reopened.load();
+  await expect(reopened.start("a","d",null)).rejects.toThrow("unavailable");
+  expect(reopened.state!.queue).toEqual([]);
+});
+test("offline creation preserves time-only NULL quantities across consecutive tasks", async () => {
+  const api=new Network(),d=disk(); api.server=null;
+  api.catalogData.activities[0].requires_design=false; api.catalogData.activities[0].requires_quantity=false;
+  const store=new SessionStore(api,"u",d.storage); await store.load(); api.online=false;
+  await store.start("a",null,null); await store.command("finish"); await store.clearCompleted();
+  await store.start("a",null,null); await store.command("finish");
+  expect(store.state!.session!.quantity).toBeNull();
+  api.online=true; await store.sync();
+  expect(store.state!.queue).toEqual([]); expect(api.server!.quantity).toBeNull();
+  expect(api.server!.status).toBe("completed");
 });

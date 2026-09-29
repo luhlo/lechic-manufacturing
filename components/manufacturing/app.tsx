@@ -197,6 +197,14 @@ export function ManufacturingApp({
       try {
         c = clientFor(url, publishableKey);
         setClient(c);
+        if (!navigator.onLine) {
+          // Restore only the last signed-in identity on this device. No offline
+          // authentication is sent to the server; every queued event is reauthorized.
+          try {
+            const saved = JSON.parse(localStorage.getItem("lechic-manufacturing-auth") ?? "null");
+            if (typeof saved?.user?.id === "string") void activate(new Api(c), saved.user.id);
+          } catch { /* The normal sign-in screen handles absent/unreadable storage. */ }
+        }
       } catch (e) {
         setError(message(e));
         setLoading(false);
@@ -221,7 +229,7 @@ export function ManufacturingApp({
           setLoading(false);
         } else if (session && storeRef.current?.uid !== session.user.id) {
           void activate(new Api(c), session.user.id);
-        } else if (!session) setLoading(false);
+        } else if (!session && !storeRef.current) setLoading(false);
       });
       unsubscribe = () => data.subscription.unsubscribe();
     });
@@ -263,6 +271,7 @@ export function ManufacturingApp({
       clearInterval(tick);
     };
   }, [reload]);
+  const offline = !online || state?.connection === "offline";
   const run = async (fn: () => Promise<unknown>) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -392,10 +401,12 @@ export function ManufacturingApp({
               </span>
             </div>
             <div className="topbar-right">
-              <span className={"sync-status " + (!online ? "offline" : "")}>
-                {!online && <WifiOff size={15} />}
+              <span className={"sync-status " + (offline ? "offline" : "")}>
+                {offline && <WifiOff size={15} />}
                 <span>
-                  {state.conflict
+                  {offline
+                    ? `Offline${state.queue.length ? ` · ${state.queue.length} pending` : ""}`
+                    : state.conflict
                     ? "Sync needs review"
                     : state.queue.length
                       ? `${state.queue.length} pending`
@@ -430,10 +441,10 @@ export function ManufacturingApp({
               {error}
             </div>
           )}
-          {state.syncError && (
+          {(offline || state.syncError) && (
             <div className="notice" role="status">
-              {state.syncError}
-              {client && (
+              {offline ? "Offline — work is saved on this device and will sync automatically when you reconnect." : state.syncError}
+              {client && state.connection === "auth" && (
                 <button className="text-button" onClick={() => setReauth(true)}>
                   Sign in again
                 </button>
@@ -516,7 +527,7 @@ export function ManufacturingApp({
                 store={store!}
                 busy={busy}
                 run={run}
-                online={online}
+                online={!offline}
               />
             ) : current === "dashboard" &&
               !allowed(state.context.permissions, "analytics.view") ? (
@@ -552,7 +563,7 @@ export function ManufacturingApp({
                     store={store!}
                     busy={busy}
                     run={run}
-                    online={online}
+                    online={!offline}
                   />
                 </section>
               )}

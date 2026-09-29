@@ -172,5 +172,7 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
     readFileSync("supabase/tests/unlock_pin_devices.sql", "utf8"),
   );
   expect(JSON.stringify(unlockDevices)).toContain("PASS: remote PIN unlock");
+  const offlineSync = await db.exec(readFileSync("supabase/tests/offline_design_sync.sql", "utf8"));
+  expect(JSON.stringify(offlineSync)).toContain("PASS: offline replay and private design sync");
   await db.close();
 });

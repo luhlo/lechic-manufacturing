@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { applyCommand, localDate, normalize } from "./domain";
 import { allowed } from "./types";
+import { localStart, networkOffline } from "./offline";
 const forbidden = ["mhfkjrtrfdnmjmmvlueg", "inzmepwulnfdlruduhbf"];
 export function clientFor(url: string, key: string) {
   if (forbidden.some((ref) => url.includes(ref)))
@@ -17,6 +18,9 @@ export function clientFor(url: string, key: string) {
       "This application requires its own Supabase project. Relay and Commissions are blocked.",
     );
   return createClient(url, key, {
+    global: { fetch: (input, init) => fetch(input, { ...init,
+      signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
+    }) },
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -262,6 +266,10 @@ export class SessionStore {
   async refresh() {
     return this.exclusive(async () => {
       this.state = (await this.disk.read(this.uid)) ?? this.state;
+      if (networkOffline() && this.state) {
+        this.state.connection = "offline";
+        return this.state;
+      }
       try {
         const context = await this.api.rpc<Context>("app_context");
         const catalog = await this.api.catalog(context);
@@ -284,15 +292,18 @@ export class SessionStore {
               ? this.state.session
               : null),
           queue: [],
+          pendingSessions: [],
           lastSync: new Date().toISOString(),
         };
         await this.disk.write(this.uid, next);
         this.state = next;
       } catch (e) {
         if (!this.state) throw e;
+        this.state.connection = "offline";
         this.state.syncError =
-          "Connection unavailable. Showing the last saved workspace.";
+          "Offline — using your saved workspace. Work will sync when you reconnect.";
         if (hasCode(e, "PGRST301") || hasCode(e, "PGRST303")) {
+          this.state.connection = "auth";
           this.state.syncError =
             "Sign in again to sync. Your work is saved on this device.";
           throw e;
@@ -325,10 +336,12 @@ export class SessionStore {
         throw Error("My work access is required to start a session.");
       if (this.state.session && this.state.session.status !== "completed")
         throw Error("You already have an active session.");
-      if (this.state.queue.length || this.state.conflict)
-        throw Error("Sync or resolve pending work first.");
-      if (typeof navigator !== "undefined" && navigator.onLine === false)
-        throw Error("Connect to start a new session.");
+      if (this.state.conflict) throw Error("Resolve pending work before starting.");
+      // A legacy unconfirmed start has no local snapshot. Recover it first.
+      if (this.state.queue.some((c) => c.action === "start" &&
+          c.session_id !== this.state!.session?.id &&
+          !(this.state!.pendingSessions ?? []).some((s) => s.id === c.session_id)))
+        throw Error("Reconnect to recover your earlier start request.");
       const command: Command = {
         request_id: crypto.randomUUID(),
         session_id: crypto.randomUUID(),
@@ -340,15 +353,17 @@ export class SessionStore {
         assignment_id: assignmentId,
         step_id: stepId,
       };
-      // Write the request before sending; an uncertain network result must retry the same UUID.
-      const next = { ...this.state, queue: [...this.state.queue, command] };
+      const session = localStart(this.state, command);
+      const pendingSessions = [...(this.state.pendingSessions ?? [])];
+      if (this.state.session && this.state.queue.some((c) => c.session_id === this.state!.session!.id))
+        pendingSessions.push(this.state.session);
+      // Persist the start and its snapshot together before showing the running timer.
+      const next = { ...this.state, session, pendingSessions, queue: [...this.state.queue, command] };
       await this.disk.write(this.uid, next);
       this.state = next;
+      this.onPersist?.();
       await this.syncUnlocked();
-      if (this.state.queue.length)
-        throw Error(
-          "Start not confirmed yet. Reconnect and tap Sync to recover this exact request.",
-        );
+      if (this.state.conflict) throw Error(this.state.conflict);
       return this.state.session;
     });
   }
@@ -390,6 +405,10 @@ export class SessionStore {
   }
   private async syncUnlocked() {
     if (!this.state || this.syncing || this.state.conflict) return;
+    if (networkOffline()) {
+      this.state.connection = "offline";
+      return;
+    }
     let state: CachedState = this.state;
     this.syncing = true;
     try {
@@ -400,11 +419,20 @@ export class SessionStore {
             p: command,
           });
           const queue = state.queue.slice(1);
-          const session = queue.reduce((s, c) => applyCommand(s, c), server);
+          const remaining = queue.filter((c) => c.session_id === server.id);
+          const reconciled = remaining.reduce((s, c) => applyCommand(s, c), server);
+          const archived = (state.pendingSessions ?? []).some((s) => s.id === server.id);
+          const session = state.session?.id === server.id ||
+            (!state.session && !archived && command.action === "start")
+            ? reconciled : state.session;
+          const pendingSessions = (state.pendingSessions ?? []).flatMap((s) =>
+            s.id !== server.id ? [s] : remaining.length ? [reconciled] : []);
           const next: CachedState = {
             ...state,
             queue,
             session,
+            pendingSessions,
+            connection: undefined,
             lastSync: new Date().toISOString(),
             syncError: undefined,
           };
@@ -431,6 +459,7 @@ export class SessionStore {
             state.conflict = message(e);
             await this.disk.write(this.uid, state);
           } else {
+            state.connection = hasCode(e, "PGRST301") || hasCode(e, "PGRST303") ? "auth" : "offline";
             state.syncError =
               hasCode(e, "PGRST301") || hasCode(e, "PGRST303")
                 ? "Sign in again to sync. Your pending work is saved on this device."
@@ -454,6 +483,8 @@ export class SessionStore {
         ...state,
         session,
         queue: [],
+        pendingSessions: [],
+        connection: undefined,
         conflict: undefined,
         syncError: undefined,
       };
@@ -464,16 +495,17 @@ export class SessionStore {
   async clearCompleted() {
     await this.exclusive(async () => {
       this.state = (await this.disk.read(this.uid)) ?? this.state;
-      if (
-        this.state?.session?.status === "completed" &&
-        !this.state.queue.length
-      ) {
-        const next = { ...this.state, session: null };
+      if (this.state?.session?.status === "completed" && !this.state.conflict) {
+        const completed = this.state.session;
+        const pendingSessions = [...(this.state.pendingSessions ?? [])];
+        if (this.state.queue.some((c) => c.session_id === completed.id))
+          pendingSessions.push(completed);
+        const next = { ...this.state, session: null, pendingSessions };
         await this.disk.write(this.uid, next);
         this.state = next;
+        this.onPersist?.();
       }
     });
-    await this.refresh();
   }
   async signOut(signOut: () => Promise<void>) {
     return this.exclusive(async () => {

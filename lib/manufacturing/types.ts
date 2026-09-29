@@ -46,6 +46,7 @@ export interface Product extends Row {
   name: string;
   sku: string;
   active: boolean;
+  image_url?: string | null;
 }
 export interface Assignment extends Row {
   employee_id: string;
@@ -113,6 +114,14 @@ export interface Command {
   step_id?: string | null;
   kind?: SegmentKind;
   quantity?: number;
+  offline_context?: StartContext;
+}
+export interface StartContext {
+  position_id: string;
+  category_id: string;
+  requires_design: boolean;
+  requires_quantity: boolean;
+  steps_enabled: boolean;
 }
 export interface Context {
   profile: Profile;
@@ -145,6 +154,8 @@ export interface CachedState {
   catalog: Catalog;
   session: Session | null;
   queue: Command[];
+  pendingSessions?: Session[];
+  connection?: "offline" | "auth";
   conflict?: string;
   syncError?: string;
   lastSync: string;

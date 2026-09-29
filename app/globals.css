@@ -1517,6 +1517,9 @@ legend {
 .work-choice-list .work-choice strong { font-size: 1rem; }
 .work-choice-list .work-choice svg { align-self: center; margin-left: auto; }
 .work-choice-search { max-width: none; margin-bottom: 14px; }
+.design-image { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; flex-shrink: 0; }
+.design-image-large { width: 120px; height: 120px; margin: 0 auto 16px; }
+.design-table-name { display: flex; align-items: center; gap: 12px; }
 .activity-toolbar { flex-wrap: wrap; align-items: end; }
 .activity-toolbar > .field { min-width: 180px; flex: 1 1 220px; max-width: 300px; }
 .activity-toolbar > .search-box { flex: 1 1 240px; }
@@ -1571,3 +1574,7 @@ legend {
   .timeline-metrics { grid-template-columns: 1fr 1fr; }
   .timeline-metrics .metric strong { font-size: 1.125rem; }
 }
+.design-sheet { margin-bottom: 24px; }
+.design-sheet summary { cursor: pointer; font-weight: 600; }
+.design-sheet form { margin-top: 20px; }
+.design-sheet textarea { width: 100%; font-family: monospace; font-size: 12px; }

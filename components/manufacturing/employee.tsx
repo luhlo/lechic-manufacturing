@@ -26,6 +26,7 @@ import {
 } from "@/lib/manufacturing/reporting-time";
 import { SessionStore } from "@/lib/manufacturing/api";
 import { WorkChoices } from "./work-choices";
+import { DesignImage } from "./design-image";
 import {
   clockText,
   currentAssignments,
@@ -249,8 +250,8 @@ export function Employee({
           <p className="muted completion-saved">
             {state.queue.length
               ? online
-                ? "Saved on this device. Sync before starting more work."
-                : "Saved on this device. Reconnect to sync before starting more work."
+                ? "Saved on this device. You can continue working while it syncs."
+                : "Saved on this device. You can continue working offline."
               : "Your session is saved."}
           </p>
           {target}
@@ -264,7 +265,7 @@ export function Employee({
           <div className="work-next-actions">
             <button
               className="button primary jumbo"
-              disabled={blocked || !!state.queue.length || !canContinue}
+              disabled={blocked || !canContinue}
               onClick={() =>
                 act("Getting your next task…", async () => {
                   await store.clearCompleted();
@@ -283,7 +284,7 @@ export function Employee({
             </button>
             <button
               className="button secondary jumbo"
-              disabled={blocked || !!state.queue.length}
+              disabled={blocked}
               onClick={() =>
                 act("Getting your activities…", async () => {
                   await store.clearCompleted();
@@ -296,7 +297,7 @@ export function Employee({
           </div>
           <button
             className="back-link centered"
-            disabled={blocked || !!state.queue.length}
+            disabled={blocked}
             onClick={() =>
               act("Getting your categories…", async () => {
                 await store.clearCompleted();
@@ -454,7 +455,7 @@ export function Employee({
       </div>
     );
   }
-  if (state.queue.length)
+  if (state.queue.some((c) => c.action === "start" && !(state.pendingSessions ?? []).some((s) => s.id === c.session_id)))
     return (
       <div className="employee-panel">
         <h1>Confirming your session…</h1>
@@ -631,6 +632,7 @@ export function Employee({
                         <h1>{selected.name}</h1>
                         {product && (
                           <>
+                            <DesignImage url={product.image_url} name={product.name} large />
                             <h2>{product.name}</h2>
                             <p className="muted">SKU: {product.sku}</p>
                           </>
@@ -638,7 +640,7 @@ export function Employee({
                       </div>
                       <button
                         className="button primary jumbo"
-                        disabled={blocked || !online}
+                        disabled={blocked}
                         onClick={() =>
                           act("Starting…", async () => {
                             await store.start(
@@ -673,7 +675,7 @@ export function Employee({
                       )}
                       {!online && (
                         <p className="notice">
-                          Reconnect to start a new session.
+                          You’re offline. This work will save on your device and sync when you reconnect.
                         </p>
                       )}
                     </>
@@ -697,6 +699,7 @@ export function Employee({
                               disabled={blocked}
                               onClick={() => choose(p, a.id)}
                             >
+                              <DesignImage url={p.image_url} name={p.name} />
                               <span>
                                 <strong>{p.name}</strong>
                                 <small>{p.sku}</small>
@@ -753,6 +756,7 @@ export function Employee({
                                   disabled={blocked}
                                   onClick={() => choose(p, null)}
                                 >
+                                  <DesignImage url={p.image_url} name={p.name} />
                                   <span>
                                     <strong>{p.name}</strong>
                                     <small>{p.sku}</small>
