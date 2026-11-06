@@ -10,6 +10,7 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -36,6 +37,7 @@
     "node_modules",
     "dist",
     "next-env.d.ts",
-    "supabase/functions/**/index.ts"
+    "supabase/functions/**/index.ts",
+    "integrations/pim/**/index.ts"
   ]
 }

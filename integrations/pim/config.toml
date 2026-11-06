@@ -1,0 +1,5 @@
+project_id = "lechic-pim-manufacturing-reader"
+
+# Revocable read-only bearer credential verified by a service-only RPC; no browser access.
+[functions.manufacturing-catalog]
+verify_jwt = false

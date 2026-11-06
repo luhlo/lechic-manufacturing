@@ -1,0 +1,5 @@
+project_id = "lechic-manufacturing"
+
+# A dedicated Vault-held job credential is verified by the handler and service-only RPC.
+[functions.manufacturing-pim-sync]
+verify_jwt = false

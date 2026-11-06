@@ -115,7 +115,9 @@ export class Api {
           all.push(...data);
           if (data.length < 1000) break;
         }
-        (c as unknown as Record<string, unknown>)[name] = all;
+        (c as unknown as Record<string, unknown>)[name] = name === "products"
+          ? all.map((item) => { const row = item as Row; return { ...row, local_active: row.active, active: row.active !== false && row.pim_available !== false }; })
+          : all;
       }),
     );
     if (context && allowed(context.permissions, "my_work.access")) {

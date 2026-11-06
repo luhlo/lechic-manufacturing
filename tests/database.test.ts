@@ -6,6 +6,11 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
   await db.exec(
     `create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz default now(),banned_until timestamptz);create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$;grant usage on schema auth to anon,authenticated;grant execute on all functions in schema auth to anon,authenticated;`,
   );
+  // PGlite has no background HTTP/cron or Vault service. Model their interfaces;
+  // production scheduling/credentials are separately verified on hosted Supabase.
+  await db.exec(`create schema cron;create function cron.schedule(text,text,text) returns bigint language sql as $$select 1::bigint$$;
+    create schema net;create function net.http_post(url text,headers jsonb,body jsonb,timeout_milliseconds integer) returns bigint language sql as $$select 1::bigint$$;
+    create schema vault;create table vault.decrypted_secrets(id uuid primary key,decrypted_secret text);`);
   let legacySession: unknown;
   let legacyActivity: unknown;
   for (const file of readdirSync("supabase/migrations")
@@ -51,7 +56,7 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
         )
       ).rows;
     }
-    await db.exec(readFileSync("supabase/migrations/" + file, "utf8"));
+    await db.exec(readFileSync("supabase/migrations/" + file, "utf8").replace(/^create extension if not exists pg_(cron|net).*;$/gm, ""));
     if (file.includes("categories_steps_timeline")) {
       expect(
         (
@@ -174,5 +179,7 @@ test("PostgreSQL integration: migration, permissions, RLS, sessions, quantity, K
   expect(JSON.stringify(unlockDevices)).toContain("PASS: remote PIN unlock");
   const offlineSync = await db.exec(readFileSync("supabase/tests/offline_design_sync.sql", "utf8"));
   expect(JSON.stringify(offlineSync)).toContain("PASS: offline replay and private design sync");
+  const pimSync = await db.exec(readFileSync("supabase/tests/pim_catalog_sync.sql", "utf8"));
+  expect(JSON.stringify(pimSync)).toContain("PASS: PIM catalog sync");
   await db.close();
 });

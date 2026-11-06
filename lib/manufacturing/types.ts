@@ -47,6 +47,9 @@ export interface Product extends Row {
   sku: string;
   active: boolean;
   image_url?: string | null;
+  pim_variant_id?: string | null;
+  pim_available?: boolean;
+  local_active?: boolean;
 }
 export interface Assignment extends Row {
   employee_id: string;

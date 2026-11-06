@@ -32,7 +32,7 @@ import { PositionAccess } from "./position-access";
 import { PinExpiration } from "./pin-expiration";
 import { EmployeeLoginSettings, PinDevices } from "./login-settings";
 import { DesignImage } from "./design-image";
-import { DesignSheet } from "./design-sheet";
+import { DesignCatalog } from "./design-catalog";
 import { useAssignmentRecipients } from "./use-assignment-recipients";
 import { assignmentEditable, hierarchyLabel, positionPermissions, recipientAllowed } from "@/lib/manufacturing/assignment-access";
 const titles: Record<string, string> = {
@@ -102,6 +102,7 @@ export function Management({
   const edit = (row?: Row) => {
     setFormError("");
     const r: Record<string, unknown> = { active: true, ...row };
+    if (page === "products" && row?.pim_variant_id) r.active = row.local_active ?? row.active;
     if (page === "activities") {
       r.category_id ??=
         selectedCategoryFilter || (c.activity_categories ?? []).find((c) => c.is_fallback)?.id || "";
@@ -145,6 +146,7 @@ export function Management({
       {label}
       <input
         type={type}
+        readOnly={page === "products" && !!editing?.pim_variant_id && ["name", "sku"].includes(key)}
         required={required}
         min={type === "number" ? 0 : undefined}
         step={
@@ -428,7 +430,7 @@ export function Management({
       {page === "activities" && (
         <ActivityOrganization state={state} api={api} refresh={refresh} />
       )}
-      {page === "products" && canEdit && <DesignSheet api={api} refresh={refresh} />}
+      {page === "products" && canEdit && <DesignCatalog api={api} refresh={refresh} />}
       {page === "roles" ? (
         <Tabs defaultValue="roles">
           <TabsList>
@@ -537,7 +539,8 @@ export function Management({
                       String(p.effective_from),
                     );
                   }
-                  await api.manage(entity, p);
+                  if (page === "products" && p.pim_variant_id) await api.rpc("pim_product_availability", {p_id: p.id, p_active: p.active !== false});
+                  else await api.manage(entity, p);
                   setEditing(null);
                   await refresh();
                   toast.success("Saved");
@@ -613,7 +616,8 @@ export function Management({
                 </>
               )}
               {page === "products" && input("SKU", "sku")}
-              {page === "products" && <><label className="field">Image URL (optional)<input type="url" maxLength={2048} placeholder="https://…" value={String(editing.image_url ?? "")} onChange={(e) => update("image_url", e.target.value)} /></label><p className="muted tiny">Leave blank to show no image. Use an HTTPS link that opens without signing in.</p></>}
+              {page === "products" && !!editing.pim_variant_id && <p className="notice">Product details come from <a href="https://le-chic-pim.lechic-miami.workers.dev/" target="_blank" rel="noreferrer">020 SKU database</a>. Edit them there, then refresh products. You can turn this design off locally below.{editing.pim_available === false ? " This product is currently a draft or archived in the SKU database." : ""}</p>}
+              {page === "products" && !editing.pim_variant_id && <><label className="field">Image URL (optional)<input type="url" maxLength={2048} placeholder="https://…" value={String(editing.image_url ?? "")} onChange={(e) => update("image_url", e.target.value)} /></label><p className="muted tiny">Leave blank to show no image. Use an HTTPS link that opens without signing in.</p></>}
               {page === "activities" && (
                 <fieldset>
                   <legend>Employee workflow</legend>
